@@ -1,16 +1,13 @@
-# api.py
+# =========================================================
+# AI-BOT - GAME API
+# =========================================================
 
 import asyncio
 import json
 import logging
 import time
 
-from typing import (
-    Dict,
-    List,
-    Optional,
-    Tuple,
-)
+from typing import Any, Dict, List, Optional
 
 import aiohttp
 
@@ -21,79 +18,94 @@ from config import (
     PAGE_NUMBER,
     PAGE_SIZE,
     REQUEST_TIMEOUT,
+    MIN_NUMBER,
+    MAX_NUMBER,
+    BIG_MIN_NUMBER,
 )
 
-
-# =========================================================
-# LOGGER
-# =========================================================
 
 logger = logging.getLogger("GameAPI")
 
 
 class GameAPI:
 
-    # =====================================================
-    # INIT
-    # =====================================================
+    def __init__(self):
 
-    def __init__(
-        self,
-        issue_url: str = ISSUE_API_URL,
-        history_url: str = HISTORY_API_URL,
-        headers: Optional[dict] = None,
-    ):
+        self.issue_url = ISSUE_API_URL
+        self.history_url = HISTORY_API_URL
 
-        self.issue_url = issue_url
+        self.headers = HEADERS.copy()
 
-        self.history_url = history_url
-
-        self.headers = (
-            headers.copy()
-            if headers
-            else HEADERS.copy()
-        )
-
-        self.session: Optional[
-            aiohttp.ClientSession
-        ] = None
+        self.session = None
 
     # =====================================================
     # SESSION
     # =====================================================
 
-    async def get_session(
-        self,
-    ) -> aiohttp.ClientSession:
+    async def get_session(self):
 
         if (
             self.session is None
             or self.session.closed
         ):
 
-            timeout = (
-                aiohttp.ClientTimeout(
-                    total=REQUEST_TIMEOUT
-                )
+            timeout = aiohttp.ClientTimeout(
+                total=REQUEST_TIMEOUT
             )
 
-            self.session = (
-                aiohttp.ClientSession(
-                    headers=self.headers,
-                    timeout=timeout,
-                )
+            self.session = aiohttp.ClientSession(
+                headers=self.headers,
+                timeout=timeout,
             )
 
         return self.session
 
     # =====================================================
-    # POST REQUEST
+    # BUILD PAYLOAD
+    # =====================================================
+
+    def build_payload(
+        self,
+        pagination=False,
+    ):
+
+        payload = {
+
+            "typeId": 1,
+
+            "language": 7,
+
+            "random":
+                "t8g1dwtbcmujvsr72m8j5e465ukhrsh6",
+
+            "timestamp":
+                int(time.time()),
+
+            "signature":
+                "0000000000000000000000002B29B4CD",
+        }
+
+        if pagination:
+
+            payload.update({
+
+                "pageSize":
+                    PAGE_SIZE,
+
+                "pageNo":
+                    PAGE_NUMBER,
+            })
+
+        return payload
+
+    # =====================================================
+    # POST
     # =====================================================
 
     async def post(
         self,
         url: str,
-        payload: dict,
+        payload: Dict[str, Any],
     ):
 
         session = await self.get_session()
@@ -105,51 +117,21 @@ class GameAPI:
                 json=payload,
             ) as response:
 
-                # -----------------------------------------
-                # STATUS
-                # -----------------------------------------
+                text = await response.text()
 
                 if response.status != 200:
 
                     logger.error(
-                        "API Error: %s | %s",
+                        "HTTP %s: %s",
                         response.status,
-                        url,
+                        text[:300],
                     )
 
-                    try:
-
-                        error_text = (
-                            await response.text()
-                        )
-
-                        logger.error(
-                            "Response: %s",
-                            error_text[:500],
-                        )
-
-                    except Exception:
-                        pass
-
                     return None
-
-                # -----------------------------------------
-                # RESPONSE
-                # -----------------------------------------
-
-                text = await response.text()
 
                 if not text:
-                    logger.warning(
-                        "Empty API response: %s",
-                        url,
-                    )
 
                     return None
-
-                # -----------------------------------------
-                # JSON
-                # -----------------------------------------
 
                 try:
 
@@ -158,8 +140,7 @@ class GameAPI:
                 except json.JSONDecodeError:
 
                     logger.error(
-                        "Invalid JSON response: %s",
-                        url,
+                        "Invalid JSON response"
                     )
 
                     return None
@@ -167,28 +148,13 @@ class GameAPI:
         except asyncio.TimeoutError:
 
             logger.error(
-                "Request timeout: %s",
-                url,
-            )
-
-        except aiohttp.ClientConnectionError as error:
-
-            logger.error(
-                "Connection error: %s",
-                error,
-            )
-
-        except aiohttp.ClientResponseError as error:
-
-            logger.error(
-                "HTTP error: %s",
-                error,
+                "API request timeout"
             )
 
         except aiohttp.ClientError as error:
 
             logger.error(
-                "Network error: %s",
+                "API connection error: %s",
                 error,
             )
 
@@ -202,114 +168,101 @@ class GameAPI:
         return None
 
     # =====================================================
-    # PAYLOAD
+    # CURRENT GAME
     # =====================================================
 
-    def build_payload(
+    async def get_current_game(
         self,
-    ) -> dict:
-
-        return {
-
-            "typeId": 1,
-
-            "language": 7,
-
-            "random": (
-                "mvi6w6d0tbh63zxr3e6bwk78nrb7tije"
-            ),
-
-            "timestamp": int(
-                time.time()
-            ),
-
-            "signature": (
-                "0000000000000000000000000D969269"
-            ),
-        }
-
-    # =====================================================
-    # CURRENT ISSUE
-    # =====================================================
-
-    async def get_current_issue(
-        self,
-    ) -> Optional[str]:
-
-        payload = self.build_payload()
+    ) -> Optional[Dict[str, Any]]:
 
         response = await self.post(
             self.issue_url,
-            payload,
+            self.build_payload(),
         )
 
         if not isinstance(
             response,
             dict,
         ):
+
             return None
 
         data = response.get(
             "data"
         )
 
-        # -----------------------------------------
-        # DATA = DICT
-        # -----------------------------------------
-
-        if isinstance(
+        if not isinstance(
             data,
             dict,
         ):
 
-            issue = (
-                data.get(
-                    "issueNumber"
-                )
-                or data.get(
-                    "issue"
-                )
-                or data.get(
-                    "issueNo"
-                )
-            )
+            data = response
 
-            if issue is not None:
+        # -------------------------------------------------
+        # PERIOD
+        # -------------------------------------------------
 
-                return str(issue)
+        period = (
 
-        # -----------------------------------------
-        # DATA = STRING / INTEGER
-        # -----------------------------------------
-
-        elif isinstance(
-            data,
-            (str, int),
-        ):
-
-            return str(data)
-
-        # -----------------------------------------
-        # FALLBACK
-        # -----------------------------------------
-
-        issue = (
-            response.get(
+            data.get(
                 "issueNumber"
             )
-            or response.get(
+
+            or data.get(
                 "issue"
             )
-            or response.get(
+
+            or data.get(
                 "issueNo"
+            )
+
+            or data.get(
+                "period"
+            )
+
+            or data.get(
+                "periodNumber"
             )
         )
 
-        if issue is not None:
+        # -------------------------------------------------
+        # TIME
+        # -------------------------------------------------
 
-            return str(issue)
+        game_time = (
 
-        return None
+            data.get(
+                "gameTime"
+            )
+
+            or data.get(
+                "time"
+            )
+
+            or data.get(
+                "drawTime"
+            )
+
+            or data.get(
+                "timestamp"
+            )
+        )
+
+        if period is None:
+
+            return None
+
+        return {
+
+            "period":
+                str(period),
+
+            "time":
+                game_time,
+
+            "raw":
+                data,
+        }
 
     # =====================================================
     # HISTORY
@@ -317,188 +270,263 @@ class GameAPI:
 
     async def get_history(
         self,
-    ) -> List[Dict]:
-
-        payload = self.build_payload()
-
-        payload.update({
-
-            "pageSize": PAGE_SIZE,
-
-            "pageNo": PAGE_NUMBER,
-
-        })
+    ) -> List[Dict[str, Any]]:
 
         response = await self.post(
             self.history_url,
-            payload,
+            self.build_payload(
+                pagination=True
+            ),
         )
 
         if not isinstance(
             response,
             dict,
         ):
+
             return []
 
-        # -----------------------------------------
-        # EXTRACT DATA
-        # -----------------------------------------
-
-        raw_data = (
-            response.get(
-                "data"
-            )
-            or response.get(
-                "list"
-            )
-            or response.get(
-                "records"
-            )
-            or []
+        raw_list = self.extract_list(
+            response
         )
-
-        # -----------------------------------------
-        # DATA = DICT
-        # -----------------------------------------
-
-        if isinstance(
-            raw_data,
-            dict,
-        ):
-
-            results = (
-                raw_data.get(
-                    "list"
-                )
-                or raw_data.get(
-                    "rows"
-                )
-                or raw_data.get(
-                    "records"
-                )
-                or raw_data.get(
-                    "data"
-                )
-                or []
-            )
-
-        # -----------------------------------------
-        # DATA = LIST
-        # -----------------------------------------
-
-        elif isinstance(
-            raw_data,
-            list,
-        ):
-
-            results = raw_data
-
-        else:
-
-            results = []
-
-        # -----------------------------------------
-        # PARSE
-        # -----------------------------------------
 
         history = []
 
-        for item in results:
+        for item in raw_list:
 
-            if not isinstance(
-                item,
-                dict,
-            ):
-                continue
-
-            # -------------------------------------
-            # ISSUE
-            # -------------------------------------
-
-            issue = (
-                item.get(
-                    "issueNumber"
-                )
-                or item.get(
-                    "issue"
-                )
-                or item.get(
-                    "issueNo"
-                )
+            record = self.normalize_result(
+                item
             )
 
-            # -------------------------------------
-            # NUMBER
-            # -------------------------------------
+            if record:
 
-            number = (
-                item.get(
-                    "number"
+                history.append(
+                    record
                 )
-                if item.get(
-                    "number"
-                ) is not None
-                else item.get(
-                    "resultNum"
-                )
-            )
-
-            if (
-                issue is None
-                or number is None
-            ):
-                continue
-
-            # -------------------------------------
-            # NUMBER → INT
-            # -------------------------------------
-
-            try:
-
-                number = int(
-                    number
-                )
-
-            except (
-                ValueError,
-                TypeError,
-            ):
-
-                continue
-
-            # -------------------------------------
-            # VALID NUMBER
-            # -------------------------------------
-
-            if number < 0 or number > 9:
-
-                continue
-
-            # -------------------------------------
-            # BIG / SMALL
-            # -------------------------------------
-
-            bs = (
-                "B"
-                if number >= 5
-                else "S"
-            )
-
-            history.append({
-
-                "issue": str(
-                    issue
-                ),
-
-                "number": number,
-
-                "bs": bs,
-
-            })
 
         return self.clean_history(
             history
         )
+
+    # =====================================================
+    # EXTRACT LIST
+    # =====================================================
+
+    def extract_list(
+        self,
+        response: Dict[str, Any],
+    ) -> List[Any]:
+
+        data = response.get(
+            "data"
+        )
+
+        # data = list
+        if isinstance(
+            data,
+            list,
+        ):
+
+            return data
+
+        # data = object
+        if isinstance(
+            data,
+            dict,
+        ):
+
+            for key in (
+                "list",
+                "rows",
+                "records",
+                "history",
+                "data",
+            ):
+
+                value = data.get(
+                    key
+                )
+
+                if isinstance(
+                    value,
+                    list,
+                ):
+
+                    return value
+
+        # root level
+        for key in (
+            "list",
+            "rows",
+            "records",
+            "history",
+        ):
+
+            value = response.get(
+                key
+            )
+
+            if isinstance(
+                value,
+                list,
+            ):
+
+                return value
+
+        return []
+
+    # =====================================================
+    # NORMALIZE RESULT
+    # =====================================================
+
+    def normalize_result(
+        self,
+        item: Any,
+    ) -> Optional[Dict[str, Any]]:
+
+        if not isinstance(
+            item,
+            dict,
+        ):
+
+            return None
+
+        # -------------------------------------------------
+        # PERIOD
+        # -------------------------------------------------
+
+        period = (
+
+            item.get(
+                "issueNumber"
+            )
+
+            or item.get(
+                "issue"
+            )
+
+            or item.get(
+                "issueNo"
+            )
+
+            or item.get(
+                "period"
+            )
+
+            or item.get(
+                "periodNumber"
+            )
+        )
+
+        # -------------------------------------------------
+        # NUMBER
+        # -------------------------------------------------
+
+        number = (
+
+            item.get(
+                "number"
+            )
+
+            if item.get(
+                "number"
+            ) is not None
+
+            else item.get(
+                "resultNum"
+            )
+        )
+
+        if number is None:
+
+            number = item.get(
+                "num"
+            )
+
+        if number is None:
+
+            number = item.get(
+                "result"
+            )
+
+        # -------------------------------------------------
+        # TIME
+        # -------------------------------------------------
+
+        game_time = (
+
+            item.get(
+                "gameTime"
+            )
+
+            or item.get(
+                "time"
+            )
+
+            or item.get(
+                "drawTime"
+            )
+
+            or item.get(
+                "createdAt"
+            )
+
+            or item.get(
+                "timestamp"
+            )
+        )
+
+        if period is None:
+            return None
+
+        if number is None:
+            return None
+
+        try:
+
+            number = int(
+                number
+            )
+
+        except (
+            ValueError,
+            TypeError,
+        ):
+
+            return None
+
+        if not (
+            MIN_NUMBER
+            <= number
+            <= MAX_NUMBER
+        ):
+
+            return None
+
+        # -------------------------------------------------
+        # BIG / SMALL
+        # -------------------------------------------------
+
+        bs = (
+            "B"
+            if number >= BIG_MIN_NUMBER
+            else "S"
+        )
+
+        return {
+
+            "period":
+                str(period),
+
+            "number":
+                number,
+
+            "bs":
+                bs,
+
+            "time":
+                game_time,
+        }
 
     # =====================================================
     # CLEAN HISTORY
@@ -506,38 +534,34 @@ class GameAPI:
 
     def clean_history(
         self,
-        history: List[Dict],
-    ) -> List[Dict]:
+        history: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
 
         unique = {}
 
         for item in history:
 
-            issue = item.get(
-                "issue"
+            period = item.get(
+                "period"
             )
 
-            if not issue:
+            if not period:
+
                 continue
 
             unique[
-                str(issue)
+                str(period)
             ] = item
 
-        cleaned = list(
+        result = list(
             unique.values()
         )
 
-        # -----------------------------------------
-        # SORT
-        # Oldest → Newest
-        # -----------------------------------------
-
         try:
 
-            cleaned.sort(
+            result.sort(
                 key=lambda x: int(
-                    x["issue"]
+                    x["period"]
                 )
             )
 
@@ -546,50 +570,47 @@ class GameAPI:
             TypeError,
         ):
 
-            cleaned.sort(
+            result.sort(
                 key=lambda x: str(
-                    x["issue"]
+                    x["period"]
                 )
             )
 
-        return cleaned
+        return result
 
     # =====================================================
-    # FETCH ALL
+    # GET ALL DATA
     # =====================================================
 
     async def fetch_all(
         self,
-    ) -> Tuple[
-        Optional[str],
-        List[Dict],
-    ]:
+    ):
 
-        issue_task = (
-            self.get_current_issue()
+        current_task = (
+            self.get_current_game()
         )
 
         history_task = (
             self.get_history()
         )
 
-        issue, history = (
+        current, history = (
             await asyncio.gather(
-                issue_task,
+                current_task,
                 history_task,
             )
         )
 
-        logger.info(
-            "Current Issue: %s | History: %d",
-            issue,
-            len(history),
-        )
+        return {
+            "current":
+                current,
 
-        return issue, history
+            "history":
+                history,
+        }
 
     # =====================================================
-    # CLOSE SESSION
+    # CLOSE
     # =====================================================
 
     async def close(
@@ -605,31 +626,6 @@ class GameAPI:
 
             self.session = None
 
-            logger.info(
-                "API session closed."
-            )
-
-    # =====================================================
-    # CONTEXT MANAGER
-    # =====================================================
-
-    async def __aenter__(
-        self,
-    ):
-
-        await self.get_session()
-
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type,
-        exc_value,
-        traceback,
-    ):
-
-        await self.close()
-
 
 # =========================================================
 # TEST
@@ -638,39 +634,50 @@ class GameAPI:
 async def test_api():
 
     logging.basicConfig(
-        level=logging.INFO,
-        format=(
-            "%(asctime)s | "
-            "%(levelname)s | "
-            "%(message)s"
-        ),
+        level=logging.INFO
     )
 
     api = GameAPI()
 
     try:
 
-        issue, history = (
-            await api.fetch_all()
+        data = await api.fetch_all()
+
+        print()
+        print(
+            "=============================="
+        )
+
+        print(
+            "CURRENT:"
+        )
+
+        print(
+            data["current"]
         )
 
         print()
         print(
-            "Current Issue:",
-            issue,
+            "HISTORY:",
+            len(
+                data["history"]
+            )
         )
 
-        print(
-            "History Count:",
-            len(history),
-        )
+        if data["history"]:
 
-        if history:
+            print()
+            print(
+                "LATEST:"
+            )
 
             print(
-                "Latest:",
-                history[-1],
+                data["history"][-1]
             )
+
+        print(
+            "=============================="
+        )
 
     finally:
 
@@ -678,7 +685,7 @@ async def test_api():
 
 
 # =========================================================
-# RUN DIRECTLY
+# DIRECT TEST
 # =========================================================
 
 if __name__ == "__main__":

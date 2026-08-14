@@ -4,8 +4,8 @@
 
 import json
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+import os
+from typing import Dict, Optional
 
 
 logger = logging.getLogger("MemoryEngine")
@@ -17,107 +17,51 @@ class MemoryEngine:
         self,
         pattern_file: str = "models/pattern_memory.json",
         formula_file: str = "models/formula_memory.json",
-        max_records: int = 5000,
     ):
 
-        self.pattern_file = Path(
-            pattern_file
-        )
+        self.pattern_file = pattern_file
+        self.formula_file = formula_file
 
-        self.formula_file = Path(
-            formula_file
-        )
-
-        self.max_records = max(
-            100,
-            max_records,
-        )
-
-        self.pattern_file.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        self.formula_file.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        self._ensure_file(
+        self.pattern_memory = self._load(
             self.pattern_file
         )
 
-        self._ensure_file(
+        self.formula_memory = self._load(
             self.formula_file
         )
-
-    # =====================================================
-    # FILE
-    # =====================================================
-
-    def _ensure_file(
-        self,
-        path: Path,
-    ) -> None:
-
-        if path.exists():
-            return
-
-        try:
-
-            path.write_text(
-                "[]",
-                encoding="utf-8",
-            )
-
-        except OSError as error:
-
-            logger.error(
-                "Cannot create %s: %s",
-                path,
-                error,
-            )
 
     # =====================================================
     # LOAD
     # =====================================================
 
+    @staticmethod
     def _load(
-        self,
-        path: Path,
-    ) -> List[Dict[str, Any]]:
+        filename: str,
+    ) -> Dict:
 
         try:
 
-            if not path.exists():
-                return []
-
-            text = path.read_text(
-                encoding="utf-8"
-            ).strip()
-
-            if not text:
-                return []
-
-            data = json.loads(
-                text
-            )
-
-            if not isinstance(
-                data,
-                list,
+            if not os.path.exists(
+                filename
             ):
 
-                return []
+                return {}
 
-            return [
-                item
-                for item in data
-                if isinstance(
-                    item,
-                    dict,
+            with open(
+                filename,
+                "r",
+                encoding="utf-8",
+            ) as file:
+
+                data = json.load(
+                    file
                 )
-            ]
+
+            return (
+                data
+                if isinstance(data, dict)
+                else {}
+            )
 
         except (
             OSError,
@@ -125,37 +69,56 @@ class MemoryEngine:
         ) as error:
 
             logger.error(
-                "Memory load error: %s",
+                "Memory load error %s: %s",
+                filename,
                 error,
             )
 
-            return []
+            return {}
 
     # =====================================================
     # SAVE
     # =====================================================
 
+    @staticmethod
     def _save(
-        self,
-        path: Path,
-        records: List[
-            Dict[str, Any]
-        ],
+        filename: str,
+        data: Dict,
     ) -> bool:
 
         try:
 
-            records = records[
-                -self.max_records:
-            ]
+            directory = os.path.dirname(
+                filename
+            )
 
-            path.write_text(
-                json.dumps(
-                    records,
-                    ensure_ascii=False,
-                    indent=2,
-                ),
+            if directory:
+
+                os.makedirs(
+                    directory,
+                    exist_ok=True,
+                )
+
+            temp_file = (
+                filename + ".tmp"
+            )
+
+            with open(
+                temp_file,
+                "w",
                 encoding="utf-8",
+            ) as file:
+
+                json.dump(
+                    data,
+                    file,
+                    indent=4,
+                    ensure_ascii=False,
+                )
+
+            os.replace(
+                temp_file,
+                filename,
             )
 
             return True
@@ -163,275 +126,511 @@ class MemoryEngine:
         except OSError as error:
 
             logger.error(
-                "Memory save error: %s",
+                "Memory save error %s: %s",
+                filename,
                 error,
             )
 
             return False
 
     # =====================================================
-    # PATTERN MEMORY
+    # DEFAULT RECORD
     # =====================================================
 
-    def load_patterns(
-        self,
-    ) -> List[Dict[str, Any]]:
+    @staticmethod
+    def _default_record() -> Dict:
 
-        return self._load(
-            self.pattern_file
-        )
+        return {
 
-    def save_pattern(
-        self,
-        record: Dict[str, Any],
-    ) -> bool:
+            "samples": 0,
 
-        records = self.load_patterns()
+            "wins": 0,
 
-        records.append(
-            record
-        )
+            "losses": 0,
 
-        return self._save(
-            self.pattern_file,
-            records,
-        )
+            "accuracy": 0.0,
+
+            "last_prediction": None,
+
+            "last_actual": None,
+
+        }
 
     # =====================================================
-    # FORMULA MEMORY
+    # GET PATTERN
     # =====================================================
 
-    def load_formulas(
+    def get_pattern(
         self,
-    ) -> List[Dict[str, Any]]:
+        pattern: str,
+    ) -> Dict:
 
-        return self._load(
-            self.formula_file
+        if not pattern:
+            return self._default_record()
+
+        record = self.pattern_memory.get(
+            pattern
         )
 
-    def save_formula(
-        self,
-        record: Dict[str, Any],
-    ) -> bool:
+        if not isinstance(
+            record,
+            dict,
+        ):
 
-        records = self.load_formulas()
+            record = self._default_record()
 
-        records.append(
-            record
-        )
-
-        return self._save(
-            self.formula_file,
-            records,
-        )
+        return record
 
     # =====================================================
-    # RECORD PREDICTION
+    # GET FORMULA
     # =====================================================
 
-    def record_prediction(
+    def get_formula(
         self,
-        *,
-        period: str,
-        prediction: int,
-        actual: Optional[int] = None,
-        pattern: Optional[str] = None,
-        confidence: float = 0.0,
-        evidence: float = 0.0,
-    ) -> bool:
+        rule_key: str,
+    ) -> Dict:
 
-        correct = None
+        if not rule_key:
+            return self._default_record()
 
-        if actual is not None:
+        record = self.formula_memory.get(
+            rule_key
+        )
 
-            correct = (
-                int(prediction)
-                == int(actual)
+        if not isinstance(
+            record,
+            dict,
+        ):
+
+            record = self._default_record()
+
+        return record
+
+    # =====================================================
+    # UPDATE RECORD
+    # =====================================================
+
+    @staticmethod
+    def _update_record(
+        memory: Dict,
+        key: str,
+        prediction: Optional[str],
+        actual: Optional[str],
+    ) -> Dict:
+
+        if not key:
+            return {}
+
+        if key not in memory:
+
+            memory[key] = (
+                MemoryEngine._default_record()
             )
 
-        record = {
+        record = memory[key]
 
-            "period":
-                str(period),
+        if not isinstance(
+            record,
+            dict,
+        ):
 
-            "prediction":
-                int(prediction),
+            record = (
+                MemoryEngine._default_record()
+            )
 
-            "actual":
-                (
-                    int(actual)
-                    if actual is not None
-                    else None
+            memory[key] = record
+
+        prediction = (
+            str(prediction).upper()
+            if prediction is not None
+            else None
+        )
+
+        actual = (
+            str(actual).upper()
+            if actual is not None
+            else None
+        )
+
+        record["samples"] = int(
+            record.get(
+                "samples",
+                0,
+            )
+        ) + 1
+
+        if (
+            prediction is not None
+            and actual is not None
+            and prediction == actual
+        ):
+
+            record["wins"] = int(
+                record.get(
+                    "wins",
+                    0,
+                )
+            ) + 1
+
+        else:
+
+            record["losses"] = int(
+                record.get(
+                    "losses",
+                    0,
+                )
+            ) + 1
+
+        samples = record[
+            "samples"
+        ]
+
+        wins = record[
+            "wins"
+        ]
+
+        record["accuracy"] = round(
+            wins / samples * 100.0,
+            2,
+        )
+
+        record[
+            "last_prediction"
+        ] = prediction
+
+        record[
+            "last_actual"
+        ] = actual
+
+        return record
+
+    # =====================================================
+    # UPDATE PATTERN
+    # =====================================================
+
+    def update_pattern(
+        self,
+        pattern: str,
+        prediction: Optional[str],
+        actual: Optional[str],
+    ) -> Dict:
+
+        record = self._update_record(
+            self.pattern_memory,
+            pattern,
+            prediction,
+            actual,
+        )
+
+        self._save(
+            self.pattern_file,
+            self.pattern_memory,
+        )
+
+        return record
+
+    # =====================================================
+    # UPDATE FORMULA
+    # =====================================================
+
+    def update_formula(
+        self,
+        rule_key: str,
+        prediction: Optional[str],
+        actual: Optional[str],
+    ) -> Dict:
+
+        record = self._update_record(
+            self.formula_memory,
+            rule_key,
+            prediction,
+            actual,
+        )
+
+        self._save(
+            self.formula_file,
+            self.formula_memory,
+        )
+
+        return record
+
+    # =====================================================
+    # UPDATE BOTH
+    # =====================================================
+
+    def update(
+        self,
+        pattern: Optional[str],
+        pattern_prediction: Optional[str],
+        formula_key: Optional[str],
+        formula_prediction: Optional[str],
+        actual: Optional[str],
+    ) -> Dict:
+
+        result = {
+
+            "pattern": None,
+
+            "formula": None,
+
+        }
+
+        if pattern:
+
+            result["pattern"] = (
+                self.update_pattern(
+                    pattern,
+                    pattern_prediction,
+                    actual,
+                )
+            )
+
+        if formula_key:
+
+            result["formula"] = (
+                self.update_formula(
+                    formula_key,
+                    formula_prediction,
+                    actual,
+                )
+            )
+
+        return result
+
+    # =====================================================
+    # STATISTICS
+    # =====================================================
+
+    @staticmethod
+    def statistics(
+        memory: Dict,
+    ) -> Dict:
+
+        total_samples = 0
+        total_wins = 0
+        total_losses = 0
+
+        for record in memory.values():
+
+            if not isinstance(
+                record,
+                dict,
+            ):
+                continue
+
+            total_samples += int(
+                record.get(
+                    "samples",
+                    0,
+                )
+            )
+
+            total_wins += int(
+                record.get(
+                    "wins",
+                    0,
+                )
+            )
+
+            total_losses += int(
+                record.get(
+                    "losses",
+                    0,
+                )
+            )
+
+        accuracy = (
+            total_wins
+            / total_samples
+            * 100.0
+            if total_samples
+            else 0.0
+        )
+
+        return {
+
+            "rules":
+                len(memory),
+
+            "samples":
+                total_samples,
+
+            "wins":
+                total_wins,
+
+            "losses":
+                total_losses,
+
+            "accuracy":
+                round(
+                    accuracy,
+                    2,
                 ),
 
-            "correct":
-                correct,
+        }
+
+    # =====================================================
+    # ALL MEMORY
+    # =====================================================
+
+    def get_all(
+        self,
+    ) -> Dict:
+
+        return {
 
             "pattern":
-                pattern,
+                self.pattern_memory,
 
-            "confidence":
-                round(
-                    float(confidence),
-                    2,
-                ),
+            "formula":
+                self.formula_memory,
 
-            "evidence":
-                round(
-                    float(evidence),
-                    2,
-                ),
         }
 
-        return self.save_pattern(
-            record
-        )
-
     # =====================================================
-    # PATTERN STATISTICS
+    # MEMORY STATS
     # =====================================================
 
-    def pattern_statistics(
+    def get_statistics(
         self,
-    ) -> Dict[str, Any]:
-
-        records = self.load_patterns()
-
-        total = 0
-        correct = 0
-
-        for record in records:
-
-            actual = record.get(
-                "actual"
-            )
-
-            result = record.get(
-                "correct"
-            )
-
-            if actual is None:
-                continue
-
-            total += 1
-
-            if result is True:
-                correct += 1
-
-        accuracy = (
-            correct / total * 100
-            if total
-            else 0.0
-        )
+    ) -> Dict:
 
         return {
 
-            "total":
-                total,
-
-            "correct":
-                correct,
-
-            "wrong":
-                total - correct,
-
-            "accuracy":
-                round(
-                    accuracy,
-                    2,
+            "pattern":
+                self.statistics(
+                    self.pattern_memory
                 ),
+
+            "formula":
+                self.statistics(
+                    self.formula_memory
+                ),
+
         }
 
     # =====================================================
-    # FORMULA STATISTICS
+    # BEST PATTERN
     # =====================================================
 
-    def formula_statistics(
+    def best_pattern(
         self,
-    ) -> Dict[str, Any]:
+        minimum_samples: int = 3,
+    ) -> Optional[Dict]:
 
-        records = self.load_formulas()
+        candidates = []
 
-        total = 0
-        correct = 0
+        for pattern, record in (
+            self.pattern_memory.items()
+        ):
 
-        for record in records:
-
-            actual = record.get(
-                "actual"
-            )
-
-            if actual is None:
+            if not isinstance(
+                record,
+                dict,
+            ):
                 continue
 
-            total += 1
+            samples = int(
+                record.get(
+                    "samples",
+                    0,
+                )
+            )
 
-            if record.get(
-                "correct"
-            ) is True:
+            accuracy = float(
+                record.get(
+                    "accuracy",
+                    0.0,
+                )
+            )
 
-                correct += 1
+            if samples >= minimum_samples:
 
-        accuracy = (
-            correct / total * 100
-            if total
-            else 0.0
+                candidates.append({
+
+                    "pattern":
+                        pattern,
+
+                    "samples":
+                        samples,
+
+                    "accuracy":
+                        accuracy,
+
+                })
+
+        if not candidates:
+            return None
+
+        candidates.sort(
+            key=lambda item: (
+                item["accuracy"],
+                item["samples"],
+            ),
+            reverse=True,
         )
 
-        return {
-
-            "total":
-                total,
-
-            "correct":
-                correct,
-
-            "wrong":
-                total - correct,
-
-            "accuracy":
-                round(
-                    accuracy,
-                    2,
-                ),
-        }
+        return candidates[0]
 
     # =====================================================
-    # RECENT MEMORY
+    # BEST FORMULA
     # =====================================================
 
-    def recent_patterns(
+    def best_formula(
         self,
-        limit: int = 20,
-    ) -> List[Dict[str, Any]]:
+        minimum_samples: int = 3,
+    ) -> Optional[Dict]:
 
-        records = self.load_patterns()
+        candidates = []
 
-        return records[-limit:]
+        for rule_key, record in (
+            self.formula_memory.items()
+        ):
 
-    def recent_formulas(
-        self,
-        limit: int = 20,
-    ) -> List[Dict[str, Any]]:
+            if not isinstance(
+                record,
+                dict,
+            ):
+                continue
 
-        records = self.load_formulas()
+            samples = int(
+                record.get(
+                    "samples",
+                    0,
+                )
+            )
 
-        return records[-limit:]
+            accuracy = float(
+                record.get(
+                    "accuracy",
+                    0.0,
+                )
+            )
 
-    # =====================================================
-    # CLEAR
-    # =====================================================
+            if samples >= minimum_samples:
 
-    def clear_patterns(self) -> bool:
+                candidates.append({
 
-        return self._save(
-            self.pattern_file,
-            [],
+                    "rule_key":
+                        rule_key,
+
+                    "samples":
+                        samples,
+
+                    "accuracy":
+                        accuracy,
+
+                })
+
+        if not candidates:
+            return None
+
+        candidates.sort(
+            key=lambda item: (
+                item["accuracy"],
+                item["samples"],
+            ),
+            reverse=True,
         )
 
-    def clear_formulas(self) -> bool:
-
-        return self._save(
-            self.formula_file,
-            [],
-        )
+        return candidates[0]

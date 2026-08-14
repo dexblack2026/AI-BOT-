@@ -8,7 +8,7 @@
 # =========================================================
 
 TELEGRAM_BOT_TOKEN = (
-    "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+    "8910093120:AAEXKCBhY18J2zZ2rDTKvImFlWiWOuhDBJQ"
 )
 
 
@@ -18,7 +18,7 @@ TELEGRAM_BOT_TOKEN = (
 # Supabase / Website Authorization Bearer Token
 
 AUTHORIZATION_TOKEN = (
-    "Bearer YOUR_JWT_TOKEN_HERE"
+    "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiIzNmI0ZWNiZi1hNzMzLTQyNzctOTY5OC1iM2FmYmY5OTE1ZjAiLCJVc2VyTmFtZSI6Ijk3Nzg5MDUyMjAiLCJuYW1lIjoiTWVtYmVyUUs3WVZNUU8iLCJleHAiOjE3ODY3MjY3MTd9.uatfENIuYW4JzKAPRo5jvL-1W2Yv5M5s9sKbBHRbwhM"
 )
 
 

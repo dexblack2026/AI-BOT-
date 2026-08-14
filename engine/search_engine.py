@@ -1,393 +1,433 @@
-# engine/search_engine.py
+# =========================================================
+# AI-BOT - SEARCH ENGINE
+# =========================================================
 
 from collections import Counter
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class SearchEngine:
 
     def __init__(
         self,
-        min_matches: int = 3,
-        max_pattern_length: int = 12,
+        min_length: int = 3,
+        max_length: int = 12,
+        min_matches: int = 1,
     ):
+
+        self.min_length = min_length
+        self.max_length = max_length
         self.min_matches = min_matches
-        self.max_pattern_length = max_pattern_length
 
     # =====================================================
-    # SEQUENCE
+    # NORMALIZE
     # =====================================================
 
-    @staticmethod
-    def to_sequence(data: List[dict]) -> List[str]:
+    def normalize(
+        self,
+        history: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
 
-        sequence = []
+        result = []
 
-        for item in data:
+        for item in history:
+
+            if not isinstance(item, dict):
+                continue
+
+            period = item.get("period")
+            number = item.get("number")
+
+            if period is None or number is None:
+                continue
+
+            try:
+                number = int(number)
+            except (ValueError, TypeError):
+                continue
 
             bs = item.get("bs")
 
-            if bs in ("B", "S"):
-                sequence.append(bs)
+            if bs not in ("B", "S"):
 
-        return sequence
+                bs = (
+                    "B"
+                    if number >= 5
+                    else "S"
+                )
 
-    # =====================================================
-    # EXACT SEARCH
-    # =====================================================
-
-    def find_exact_matches(
-        self,
-        sequence: List[str],
-        pattern: str,
-    ) -> List[dict]:
-
-        results = []
-
-        pattern_length = len(pattern)
-
-        if pattern_length == 0:
-            return results
-
-        # နောက်က result ရှိတဲ့နေရာအထိပဲရှာ
-        for i in range(
-            0,
-            len(sequence) - pattern_length
-        ):
-
-            current = "".join(
-                sequence[
-                    i:i + pattern_length
-                ]
-            )
-
-            if current != pattern:
-                continue
-
-            next_index = i + pattern_length
-
-            if next_index >= len(sequence):
-                continue
-
-            next_result = sequence[next_index]
-
-            results.append({
-                "index": i,
-                "pattern": pattern,
-                "next": next_result,
+            result.append({
+                "period": str(period),
+                "number": number,
+                "bs": bs,
+                "time": item.get("time"),
             })
 
-        return results
+        return result
 
     # =====================================================
-    # NEXT RESULT COUNTER
+    # B/S SEQUENCE
     # =====================================================
 
-    def count_next_results(
+    def get_sequence(
         self,
-        matches: List[dict],
-    ) -> Dict[str, int]:
+        history: List[Dict[str, Any]],
+    ) -> str:
 
-        counter = Counter()
-
-        for match in matches:
-
-            result = match.get("next")
-
-            if result in ("B", "S"):
-                counter[result] += 1
-
-        return {
-            "B": counter["B"],
-            "S": counter["S"],
-            "total": (
-                counter["B"] +
-                counter["S"]
-            ),
-        }
+        return "".join(
+            item["bs"]
+            for item in history
+            if item["bs"] in ("B", "S")
+        )
 
     # =====================================================
-    # SEARCH ONE PATTERN
+    # LATEST PATTERN
     # =====================================================
 
-    def search_pattern(
+    def latest_pattern(
         self,
-        sequence: List[str],
+        history: List[Dict[str, Any]],
+        length: int,
+    ) -> Optional[str]:
+
+        history = self.normalize(history)
+
+        if len(history) < length:
+            return None
+
+        sequence = self.get_sequence(history)
+
+        if len(sequence) < length:
+            return None
+
+        return sequence[-length:]
+
+    # =====================================================
+    # SEARCH PATTERN
+    # =====================================================
+
+    def search(
+        self,
+        history: List[Dict[str, Any]],
         pattern: str,
-    ) -> Optional[dict]:
+    ) -> List[Dict[str, Any]]:
 
-        matches = self.find_exact_matches(
-            sequence,
+        history = self.normalize(history)
+
+        pattern = pattern.upper().strip()
+
+        if not pattern:
+            return []
+
+        if any(
+            char not in ("B", "S")
+            for char in pattern
+        ):
+            return []
+
+        length = len(pattern)
+
+        matches = []
+
+        # Need one result after pattern
+        if len(history) <= length:
+            return []
+
+        for index in range(
+            len(history) - length
+        ):
+
+            window = history[
+                index:index + length
+            ]
+
+            sequence = "".join(
+                item["bs"]
+                for item in window
+            )
+
+            if sequence != pattern:
+                continue
+
+            next_item = history[
+                index + length
+            ]
+
+            matches.append({
+
+                "pattern": pattern,
+
+                "matched_period": (
+                    window[-1]["period"]
+                ),
+
+                "next_period": (
+                    next_item["period"]
+                ),
+
+                "next_number": (
+                    next_item["number"]
+                ),
+
+                "next_bs": (
+                    next_item["bs"]
+                ),
+
+                "next_time": (
+                    next_item.get("time")
+                ),
+            })
+
+        return matches
+
+    # =====================================================
+    # SEARCH LATEST
+    # =====================================================
+
+    def search_latest(
+        self,
+        history: List[Dict[str, Any]],
+        length: int,
+    ) -> Dict[str, Any]:
+
+        history = self.normalize(history)
+
+        pattern = self.latest_pattern(
+            history,
+            length,
+        )
+
+        if pattern is None:
+
+            return {
+                "pattern": None,
+                "matches": [],
+                "match_count": 0,
+                "numbers": {},
+                "bs": {},
+            }
+
+        matches = self.search(
+            history,
             pattern,
         )
 
-        if len(matches) < self.min_matches:
-            return None
-
-        counts = self.count_next_results(
-            matches
+        number_counter = Counter(
+            item["next_number"]
+            for item in matches
         )
 
-        total = counts["total"]
-
-        if total == 0:
-            return None
-
-        if counts["B"] > counts["S"]:
-
-            prediction = "B"
-
-        elif counts["S"] > counts["B"]:
-
-            prediction = "S"
-
-        else:
-
-            prediction = None
-
-        rate = 0.0
-
-        if prediction:
-
-            rate = (
-                counts[prediction]
-                / total
-                * 100
-            )
+        bs_counter = Counter(
+            item["next_bs"]
+            for item in matches
+        )
 
         return {
+
             "pattern": pattern,
-            "length": len(pattern),
-            "matches": len(matches),
-            "B": counts["B"],
-            "S": counts["S"],
-            "prediction": prediction,
-            "historical_rate": round(
-                rate,
-                2
+
+            "matches": matches,
+
+            "match_count": len(matches),
+
+            "numbers": dict(
+                number_counter
             ),
-            "locations": [
-                match["index"]
-                for match in matches
-            ],
+
+            "bs": dict(
+                bs_counter
+            ),
         }
 
     # =====================================================
-    # SEARCH LONGEST PATTERN
-    # =====================================================
-
-    def search_longest(
-        self,
-        sequence: List[str],
-        min_length: int = 3,
-    ) -> Optional[dict]:
-
-        if len(sequence) < min_length:
-            return None
-
-        max_length = min(
-            self.max_pattern_length,
-            len(sequence) - 1,
-        )
-
-        # အရှည်ဆုံးကနေ စရှာ
-        for length in range(
-            max_length,
-            min_length - 1,
-            -1,
-        ):
-
-            pattern = "".join(
-                sequence[-length:]
-            )
-
-            result = self.search_pattern(
-                sequence,
-                pattern,
-            )
-
-            if result is not None:
-
-                return result
-
-        return None
-
-    # =====================================================
-    # SEARCH ALL LENGTHS
+    # SEARCH ALL PATTERN LENGTHS
     # =====================================================
 
     def search_all(
         self,
-        sequence: List[str],
-        min_length: int = 3,
-    ) -> List[dict]:
+        history: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+
+        history = self.normalize(history)
 
         results = []
 
-        if len(sequence) < min_length:
-            return results
-
-        max_length = min(
-            self.max_pattern_length,
-            len(sequence) - 1,
+        maximum = min(
+            self.max_length,
+            len(history) - 1,
         )
 
         for length in range(
-            min_length,
-            max_length + 1,
+            self.min_length,
+            maximum + 1,
         ):
 
-            pattern = "".join(
-                sequence[-length:]
+            result = self.search_latest(
+                history,
+                length,
             )
 
-            result = self.search_pattern(
-                sequence,
-                pattern,
-            )
+            if (
+                result["match_count"]
+                >= self.min_matches
+            ):
 
-            if result is not None:
-
-                results.append(result)
-
-        # Pattern length အရှည်ဆုံးကို အပေါ်တင်
-        results.sort(
-            key=lambda x: (
-                x["length"],
-                x["historical_rate"],
-                x["matches"],
-            ),
-            reverse=True,
-        )
+                results.append({
+                    "length": length,
+                    **result,
+                })
 
         return results
 
     # =====================================================
-    # SIMILAR SEQUENCE SEARCH
+    # NUMBER COUNTS
     # =====================================================
 
-    def find_similar_sequences(
+    def number_counts(
         self,
-        sequence: List[str],
-        target_length: int = 6,
-    ) -> List[dict]:
+        matches: List[Dict[str, Any]],
+    ) -> Dict[int, int]:
 
-        results = []
+        counter = Counter()
 
-        if len(sequence) <= target_length:
-            return results
+        for item in matches:
 
-        target = sequence[-target_length:]
+            number = item.get(
+                "next_number"
+            )
 
-        for i in range(
-            len(sequence) - target_length
-        ):
-
-            candidate = sequence[
-                i:i + target_length
-            ]
-
-            if candidate == target:
+            if number is None:
                 continue
 
-            similarity = self.sequence_similarity(
-                target,
-                candidate,
+            counter[int(number)] += 1
+
+        return dict(
+            sorted(
+                counter.items()
+            )
+        )
+
+    # =====================================================
+    # B/S COUNTS
+    # =====================================================
+
+    def bs_counts(
+        self,
+        matches: List[Dict[str, Any]],
+    ) -> Dict[str, int]:
+
+        counter = Counter()
+
+        for item in matches:
+
+            bs = item.get(
+                "next_bs"
             )
 
-            results.append({
-                "index": i,
-                "sequence": "".join(candidate),
-                "similarity": round(
-                    similarity,
-                    2
-                ),
-                "next": (
-                    sequence[i + target_length]
-                    if (
-                        i + target_length
-                        < len(sequence)
-                    )
-                    else None
-                ),
-            })
+            if bs in ("B", "S"):
+
+                counter[bs] += 1
+
+        return dict(counter)
+
+    # =====================================================
+    # BEST RESULT
+    # =====================================================
+
+    def best_result(
+        self,
+        history: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+
+        results = self.search_all(
+            history
+        )
+
+        if not results:
+            return None
+
+        # Prefer:
+        # 1. More matches
+        # 2. Longer pattern
 
         results.sort(
-            key=lambda x: x["similarity"],
+            key=lambda item: (
+                item["match_count"],
+                item["length"],
+            ),
             reverse=True,
         )
 
-        return results
+        best = results[0]
 
-    # =====================================================
-    # SIMILARITY
-    # =====================================================
+        matches = best["matches"]
 
-    @staticmethod
-    def sequence_similarity(
-        a: List[str],
-        b: List[str],
-    ) -> float:
-
-        if not a or not b:
-            return 0.0
-
-        length = min(
-            len(a),
-            len(b),
+        number_counts = self.number_counts(
+            matches
         )
 
-        if length == 0:
-            return 0.0
-
-        same = 0
-
-        for i in range(length):
-
-            if a[i] == b[i]:
-                same += 1
-
-        return (
-            same / length * 100
+        bs_counts = self.bs_counts(
+            matches
         )
 
-    # =====================================================
-    # SUMMARY
-    # =====================================================
+        best_number = None
 
-    def analyze(
-        self,
-        data: List[dict],
-    ) -> dict:
+        if number_counts:
 
-        sequence = self.to_sequence(data)
+            best_number = max(
+                number_counts,
+                key=number_counts.get,
+            )
 
-        if len(sequence) < 3:
+        best_bs = None
 
-            return {
-                "sequence": "",
-                "length": len(sequence),
-                "pattern": None,
-                "similar": [],
-                "status": "INSUFFICIENT_DATA",
-            }
+        if bs_counts:
 
-        longest = self.search_longest(
-            sequence
-        )
-
-        similar = self.find_similar_sequences(
-            sequence,
-            target_length=min(
-                6,
-                len(sequence) - 1,
-            ),
-        )
+            best_bs = max(
+                bs_counts,
+                key=bs_counts.get,
+            )
 
         return {
-            "sequence": "".join(sequence),
-            "length": len(sequence),
-            "pattern": longest,
-            "similar": similar[:20],
-            "status": "OK",
+
+            "pattern":
+                best["pattern"],
+
+            "length":
+                best["length"],
+
+            "match_count":
+                best["match_count"],
+
+            "matches":
+                matches,
+
+            "number_counts":
+                number_counts,
+
+            "bs_counts":
+                bs_counts,
+
+            "best_number":
+                best_number,
+
+            "best_bs":
+                best_bs,
         }
+
+
+# =========================================================
+# HELPER
+# =========================================================
+
+def find_pattern(
+    history: List[Dict[str, Any]],
+    pattern: str,
+) -> List[Dict[str, Any]]:
+
+    engine = SearchEngine()
+
+    return engine.search(
+        history,
+        pattern,
+    )

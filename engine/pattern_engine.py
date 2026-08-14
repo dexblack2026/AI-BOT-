@@ -1,195 +1,273 @@
-# engine/pattern_engine.py
+# =========================================================
+# AI-BOT - PATTERN ENGINE
+# =========================================================
 
 from collections import Counter
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class PatternEngine:
 
     def __init__(
         self,
-        min_length: int = 3,
-        max_length: int = 12,
-        min_matches: int = 3,
+        min_matches: int = 1,
     ):
-        self.min_length = min_length
-        self.max_length = max_length
-        self.min_matches = min_matches
 
-    # =====================================================
-    # CURRENT CONTEXT
-    # =====================================================
-
-    def current_context(
-        self,
-        sequence: List[str],
-        length: int,
-    ) -> str:
-
-        if not sequence:
-            return ""
-
-        length = min(
-            length,
-            len(sequence)
-        )
-
-        return "".join(
-            sequence[-length:]
+        self.min_matches = max(
+            1,
+            min_matches,
         )
 
     # =====================================================
-    # FIND PATTERN
+    # ANALYZE SEARCH RESULT
     # =====================================================
 
-    def find_pattern(
+    def analyze(
         self,
-        sequence: List[str],
-        pattern: str,
-    ) -> List[Dict]:
+        search_result: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
 
-        results = []
+        if not search_result:
+            return None
 
-        if not pattern:
-            return results
-
-        length = len(pattern)
-
-        for i in range(
-            len(sequence) - length
-        ):
-
-            current = "".join(
-                sequence[
-                    i:i + length
-                ]
-            )
-
-            if current != pattern:
-                continue
-
-            next_index = i + length
-
-            if next_index >= len(sequence):
-                continue
-
-            next_result = sequence[
-                next_index
-            ]
-
-            results.append({
-                "index": i,
-                "pattern": pattern,
-                "next": next_result,
-            })
-
-        return results
-
-    # =====================================================
-    # PATTERN STATISTICS
-    # =====================================================
-
-    def pattern_statistics(
-        self,
-        sequence: List[str],
-        pattern: str,
-    ) -> Optional[Dict]:
-
-        matches = self.find_pattern(
-            sequence,
-            pattern,
+        matches = search_result.get(
+            "matches",
+            [],
         )
 
         if len(matches) < self.min_matches:
             return None
 
-        counter = Counter(
-            item["next"]
-            for item in matches
+        pattern = search_result.get(
+            "pattern"
         )
 
-        total = (
-            counter["B"] +
-            counter["S"]
-        )
-
-        if total == 0:
+        if not pattern:
             return None
 
-        prediction = None
+        # -------------------------------------------------
+        # NUMBER
+        # -------------------------------------------------
 
-        if counter["B"] > counter["S"]:
-            prediction = "B"
+        number_counter = Counter()
 
-        elif counter["S"] > counter["B"]:
-            prediction = "S"
+        # -------------------------------------------------
+        # B/S
+        # -------------------------------------------------
 
-        if prediction:
+        bs_counter = Counter()
 
-            rate = (
-                counter[prediction]
+        for match in matches:
+
+            number = match.get(
+                "next_number"
+            )
+
+            bs = match.get(
+                "next_bs"
+            )
+
+            if number is not None:
+
+                try:
+                    number_counter[
+                        int(number)
+                    ] += 1
+
+                except (
+                    ValueError,
+                    TypeError,
+                ):
+                    pass
+
+            if bs in ("B", "S"):
+
+                bs_counter[bs] += 1
+
+        total = len(matches)
+
+        # -------------------------------------------------
+        # BEST NUMBER
+        # -------------------------------------------------
+
+        best_number = None
+        best_number_count = 0
+
+        if number_counter:
+
+            best_number = max(
+                number_counter,
+                key=number_counter.get,
+            )
+
+            best_number_count = (
+                number_counter[
+                    best_number
+                ]
+            )
+
+        # -------------------------------------------------
+        # BEST B/S
+        # -------------------------------------------------
+
+        best_bs = None
+        best_bs_count = 0
+
+        if bs_counter:
+
+            best_bs = max(
+                bs_counter,
+                key=bs_counter.get,
+            )
+
+            best_bs_count = (
+                bs_counter[
+                    best_bs
+                ]
+            )
+
+        # -------------------------------------------------
+        # RATES
+        # -------------------------------------------------
+
+        number_rate = 0.0
+
+        if total:
+
+            number_rate = (
+                best_number_count
                 / total
                 * 100
             )
 
-        else:
+        bs_rate = 0.0
 
-            rate = 50.0
+        if total:
+
+            bs_rate = (
+                best_bs_count
+                / total
+                * 100
+            )
+
+        # -------------------------------------------------
+        # PATTERN STRENGTH
+        # -------------------------------------------------
+
+        pattern_length = len(
+            pattern
+        )
+
+        length_score = min(
+            pattern_length * 5,
+            30,
+        )
+
+        match_score = min(
+            total * 5,
+            30,
+        )
+
+        frequency_score = (
+            number_rate * 0.40
+        )
+
+        strength = (
+            length_score
+            + match_score
+            + frequency_score
+        )
+
+        strength = min(
+            100.0,
+            round(
+                strength,
+                2,
+            ),
+        )
 
         return {
-            "pattern": pattern,
-            "length": len(pattern),
-            "matches": len(matches),
-            "B": counter["B"],
-            "S": counter["S"],
-            "prediction": prediction,
-            "rate": round(rate, 2),
+
+            "pattern":
+                pattern,
+
+            "pattern_length":
+                pattern_length,
+
+            "match_count":
+                total,
+
+            "number_counts":
+                dict(
+                    number_counter
+                ),
+
+            "bs_counts":
+                dict(
+                    bs_counter
+                ),
+
+            "best_number":
+                best_number,
+
+            "best_number_count":
+                best_number_count,
+
+            "number_rate":
+                round(
+                    number_rate,
+                    2,
+                ),
+
+            "best_bs":
+                best_bs,
+
+            "best_bs_count":
+                best_bs_count,
+
+            "bs_rate":
+                round(
+                    bs_rate,
+                    2,
+                ),
+
+            "strength":
+                strength,
         }
 
     # =====================================================
-    # ANALYZE ALL CURRENT PATTERNS
+    # ANALYZE ALL PATTERNS
     # =====================================================
 
-    def analyze_patterns(
+    def analyze_all(
         self,
-        sequence: List[str],
-    ) -> List[Dict]:
+        search_results: List[
+            Dict[str, Any]
+        ],
+    ) -> List[
+        Dict[str, Any]
+    ]:
 
         results = []
 
-        if len(sequence) < self.min_length:
-            return results
+        for item in search_results:
 
-        max_length = min(
-            self.max_length,
-            len(sequence) - 1,
-        )
-
-        for length in range(
-            self.min_length,
-            max_length + 1,
-        ):
-
-            pattern = self.current_context(
-                sequence,
-                length,
+            analyzed = self.analyze(
+                item
             )
 
-            stats = self.pattern_statistics(
-                sequence,
-                pattern,
-            )
+            if analyzed:
 
-            if stats:
+                results.append(
+                    analyzed
+                )
 
-                results.append(stats)
-
-        # အရှည်ဆုံး pattern ကို ဦးစားပေး
+        # Strongest first
         results.sort(
-            key=lambda x: (
-                x["length"],
-                x["matches"],
-                x["rate"],
+            key=lambda item: (
+                item["strength"],
+                item["number_rate"],
+                item["match_count"],
             ),
             reverse=True,
         )
@@ -197,162 +275,131 @@ class PatternEngine:
         return results
 
     # =====================================================
-    # RUN-LENGTH PATTERN
+    # BEST PATTERN
     # =====================================================
 
-    def get_current_run(
+    def best_pattern(
         self,
-        sequence: List[str],
-    ) -> Dict:
+        search_results: List[
+            Dict[str, Any]
+        ],
+    ) -> Optional[
+        Dict[str, Any]
+    ]:
 
-        if not sequence:
-
-            return {
-                "type": None,
-                "length": 0,
-                "pattern": "",
-            }
-
-        current = sequence[-1]
-
-        count = 0
-
-        for value in reversed(sequence):
-
-            if value != current:
-                break
-
-            count += 1
-
-        return {
-            "type": current,
-            "length": count,
-            "pattern": current * count,
-        }
-
-    # =====================================================
-    # ALTERNATING PATTERN
-    # =====================================================
-
-    def detect_alternating(
-        self,
-        sequence: List[str],
-        min_length: int = 4,
-    ) -> Optional[Dict]:
-
-        if len(sequence) < min_length:
-            return None
-
-        current = sequence[-min_length:]
-
-        for i in range(1, len(current)):
-
-            if current[i] == current[i - 1]:
-
-                return None
-
-        return {
-            "pattern": "".join(current),
-            "type": "ALTERNATING",
-            "length": len(current),
-        }
-
-    # =====================================================
-    # STREAK PATTERN
-    # =====================================================
-
-    def detect_streak(
-        self,
-        sequence: List[str],
-    ) -> Optional[Dict]:
-
-        run = self.get_current_run(
-            sequence
+        results = self.analyze_all(
+            search_results
         )
 
-        if run["length"] < 2:
+        if not results:
+
             return None
 
-        return {
-            "pattern": run["pattern"],
-            "type": "STREAK",
-            "value": run["type"],
-            "length": run["length"],
-        }
+        return results[0]
 
     # =====================================================
-    # TRANSITION PATTERN
+    # COMPARE PATTERNS
     # =====================================================
 
-    def transition_pattern(
+    def compare(
         self,
-        sequence: List[str],
-        length: int = 5,
-    ) -> Optional[Dict]:
+        patterns: List[
+            Dict[str, Any]
+        ],
+    ) -> Optional[
+        Dict[str, Any]
+    ]:
 
-        if len(sequence) < length + 1:
+        if not patterns:
+
             return None
 
-        context = sequence[-length:]
+        number_votes = Counter()
+        bs_votes = Counter()
 
-        transitions = []
+        for pattern in patterns:
 
-        for i in range(
-            1,
-            len(context)
-        ):
+            number = pattern.get(
+                "best_number"
+            )
 
-            transitions.append(
-                context[i - 1]
-                + "→"
-                + context[i]
+            bs = pattern.get(
+                "best_bs"
+            )
+
+            strength = float(
+                pattern.get(
+                    "strength",
+                    0,
+                )
+            )
+
+            weight = max(
+                1.0,
+                strength / 20.0,
+            )
+
+            if number is not None:
+
+                number_votes[
+                    int(number)
+                ] += weight
+
+            if bs in ("B", "S"):
+
+                bs_votes[bs] += weight
+
+        best_number = None
+
+        if number_votes:
+
+            best_number = max(
+                number_votes,
+                key=number_votes.get,
+            )
+
+        best_bs = None
+
+        if bs_votes:
+
+            best_bs = max(
+                bs_votes,
+                key=bs_votes.get,
             )
 
         return {
-            "pattern": "".join(context),
-            "transitions": transitions,
-            "length": len(context),
+
+            "best_number":
+                best_number,
+
+            "best_bs":
+                best_bs,
+
+            "number_votes":
+                dict(
+                    number_votes
+                ),
+
+            "bs_votes":
+                dict(
+                    bs_votes
+                ),
+
+            "pattern_count":
+                len(patterns),
         }
 
-    # =====================================================
-    # FULL PATTERN ANALYSIS
-    # =====================================================
 
-    def analyze(
-        self,
-        sequence: List[str],
-    ) -> Dict:
+# =========================================================
+# HELPER
+# =========================================================
 
-        if not sequence:
+def analyze_pattern(
+    search_result: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
 
-            return {
-                "status": "NO_DATA",
-                "patterns": [],
-            }
+    engine = PatternEngine()
 
-        patterns = self.analyze_patterns(
-            sequence
-        )
-
-        run = self.detect_streak(
-            sequence
-        )
-
-        alternating = self.detect_alternating(
-            sequence
-        )
-
-        transition = self.transition_pattern(
-            sequence
-        )
-
-        return {
-            "status": "OK",
-            "current": "".join(
-                sequence[-12:]
-            ),
-            "patterns": patterns,
-            "run": run,
-            "alternating": alternating,
-            "transition": transition,
-        }
+    return engine.analyze(
+        search_result
+    )

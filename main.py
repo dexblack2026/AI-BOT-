@@ -1,7 +1,25 @@
-import asyncio
+# =========================================================
+# AI-BOT - MAIN
+# =========================================================
+
 import logging
 
-from config import TELEGRAM_BOT_TOKEN
+from config import (
+    TELEGRAM_BOT_TOKEN,
+    GAME_SECONDS,
+    CHECK_INTERVAL,
+)
+
+from api import GameAPI
+
+from engine.search_engine import SearchEngine
+from engine.pattern_engine import PatternEngine
+from engine.formula_engine import FormulaEngine
+from engine.backtest_engine import BacktestEngine
+from engine.evidence_engine import EvidenceEngine
+from engine.memory_engine import MemoryEngine
+from engine.learning_engine import LearningEngine
+
 from telegram_bot import TelegramBot
 
 
@@ -11,91 +29,182 @@ from telegram_bot import TelegramBot
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s"
+    format=(
+        "%(asctime)s | "
+        "%(levelname)s | "
+        "%(name)s | "
+        "%(message)s"
+    ),
 )
 
-logger = logging.getLogger("PredictionBot")
+logger = logging.getLogger("Main")
 
 
 # =========================================================
-# MAIN APPLICATION
+# BUILD ENGINE
 # =========================================================
 
-class Application:
+def build_bot():
 
-    def __init__(self):
+    logger.info(
+        "Initializing AI Prediction Engine..."
+    )
 
-        self.telegram_bot = None
+    # -----------------------------------------------------
+    # API
+    # -----------------------------------------------------
 
-    # =====================================================
-    # INITIALIZE
-    # =====================================================
+    api = GameAPI()
 
-    def initialize(self):
+    # -----------------------------------------------------
+    # SEARCH ENGINE
+    # -----------------------------------------------------
 
-        logger.info("===================================")
-        logger.info("🤖 PREDICTION BOT INITIALIZING")
-        logger.info("===================================")
+    search_engine = SearchEngine()
 
-        if not TELEGRAM_BOT_TOKEN:
-            raise ValueError(
-                "TELEGRAM_BOT_TOKEN is not configured."
-            )
+    # -----------------------------------------------------
+    # PATTERN ENGINE
+    # -----------------------------------------------------
 
-        # Telegram UI
-        self.telegram_bot = TelegramBot(
-            token=TELEGRAM_BOT_TOKEN
+    pattern_engine = PatternEngine(
+        search_engine=search_engine,
+    )
+
+    # -----------------------------------------------------
+    # FORMULA ENGINE
+    # -----------------------------------------------------
+
+    formula_engine = FormulaEngine()
+
+    # -----------------------------------------------------
+    # BACKTEST ENGINE
+    # -----------------------------------------------------
+
+    backtest_engine = BacktestEngine()
+
+    # -----------------------------------------------------
+    # EVIDENCE ENGINE
+    # -----------------------------------------------------
+
+    evidence_engine = EvidenceEngine()
+
+    # -----------------------------------------------------
+    # MEMORY ENGINE
+    # -----------------------------------------------------
+
+    memory_engine = MemoryEngine(
+        pattern_file=(
+            "models/pattern_memory.json"
+        ),
+        formula_file=(
+            "models/formula_memory.json"
+        ),
+    )
+
+    # -----------------------------------------------------
+    # LEARNING ENGINE
+    # -----------------------------------------------------
+
+    learning_engine = LearningEngine(
+        memory_engine=memory_engine,
+    )
+
+    # -----------------------------------------------------
+    # TELEGRAM BOT
+    # -----------------------------------------------------
+
+    bot = TelegramBot(
+
+        token=TELEGRAM_BOT_TOKEN,
+
+        api=api,
+
+        pattern_engine=pattern_engine,
+
+        formula_engine=formula_engine,
+
+        backtest_engine=backtest_engine,
+
+        evidence_engine=evidence_engine,
+
+        memory_engine=memory_engine,
+
+        learning_engine=learning_engine,
+
+        game_seconds=GAME_SECONDS,
+
+        check_interval=CHECK_INTERVAL,
+    )
+
+    logger.info(
+        "All engines initialized successfully."
+    )
+
+    return bot
+
+
+# =========================================================
+# MAIN
+# =========================================================
+
+def main():
+
+    logger.info(
+        "=========================================="
+    )
+
+    logger.info(
+        "        AI PREDICTION BOT STARTING"
+    )
+
+    logger.info(
+        "=========================================="
+    )
+
+    # -----------------------------------------------------
+    # TOKEN CHECK
+    # -----------------------------------------------------
+
+    if not TELEGRAM_BOT_TOKEN:
+
+        raise RuntimeError(
+            "TELEGRAM_BOT_TOKEN is not configured."
         )
+
+    # -----------------------------------------------------
+    # BUILD
+    # -----------------------------------------------------
+
+    bot = build_bot()
+
+    # -----------------------------------------------------
+    # RUN
+    # -----------------------------------------------------
+
+    try:
+
+        bot.run()
+
+    except KeyboardInterrupt:
 
         logger.info(
-            "Telegram UI initialized."
+            "Bot stopped by user."
         )
 
-    # =====================================================
-    # START
-    # =====================================================
+    except Exception as error:
 
-    async def start(self):
-
-        self.initialize()
-
-        logger.info(
-            "🚀 Starting Telegram Prediction Bot..."
+        logger.exception(
+            "Fatal error: %s",
+            error,
         )
 
-        await self.telegram_bot.start()
+        raise
 
 
 # =========================================================
 # ENTRY POINT
 # =========================================================
 
-def main():
-
-    application = Application()
-
-    try:
-
-        asyncio.run(
-            application.start()
-        )
-
-    except KeyboardInterrupt:
-
-        logger.info(
-            "🛑 Bot stopped."
-        )
-
-    except Exception as error:
-
-        logger.exception(
-            f"Fatal error: {error}"
-        )
-
-
-# =========================================================
-# RUN
-# =========================================================
-
 if __name__ == "__main__":
+
     main()

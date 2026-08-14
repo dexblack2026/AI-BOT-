@@ -1,184 +1,410 @@
-# engine/formula_engine.py
+# =========================================================
+# AI-BOT - FORMULA ENGINE
+# =========================================================
 
-from typing import Dict, Optional
+from collections import Counter
+from typing import Any, Dict, List, Optional
 
 
 class FormulaEngine:
 
     def __init__(self):
-
-        # =================================================
-        # S RUN FORMULA
-        #
-        # S      -> B
-        # SS     -> B
-        # SSS    -> S
-        # SSSS   -> B
-        # SSSSS  -> S
-        # =================================================
-
-        self.s_formula: Dict[int, str] = {
-            1: "B",
-            2: "B",
-            3: "S",
-            4: "B",
-            5: "S",
-        }
-
-        # =================================================
-        # B RUN FORMULA
-        #
-        # B       -> S
-        # BB      -> S
-        # BBB     -> B
-        # BBBB    -> S
-        # BBBBB   -> B
-        # BBBBBB  -> S
-        # =================================================
-
-        self.b_formula: Dict[int, str] = {
-            1: "S",
-            2: "S",
-            3: "B",
-            4: "S",
-            5: "B",
-            6: "S",
-        }
+        pass
 
     # =====================================================
-    # GET CURRENT RUN
+    # NORMALIZE
     # =====================================================
 
-    @staticmethod
-    def get_current_run(
-        sequence: list[str],
-    ) -> tuple[str, int]:
-
-        if not sequence:
-            return "", 0
-
-        current = sequence[-1]
-
-        count = 0
-
-        for value in reversed(sequence):
-
-            if value != current:
-                break
-
-            count += 1
-
-        return current, count
-
-    # =====================================================
-    # GET FORMULA PREDICTION
-    # =====================================================
-
-    def predict(
+    def normalize(
         self,
-        sequence: list[str],
-    ) -> Optional[str]:
+        history: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
 
-        run_type, run_length = (
-            self.get_current_run(sequence)
-        )
+        result = []
 
-        if run_type == "S":
+        for item in history:
 
-            return self.s_formula.get(
-                run_length
-            )
+            if not isinstance(item, dict):
+                continue
 
-        if run_type == "B":
+            number = item.get("number")
 
-            return self.b_formula.get(
-                run_length
-            )
+            if number is None:
+                continue
 
-        return None
+            try:
+                number = int(number)
+            except (ValueError, TypeError):
+                continue
+
+            if number < 0 or number > 9:
+                continue
+
+            bs = item.get("bs")
+
+            if bs not in ("B", "S"):
+                bs = "B" if number >= 5 else "S"
+
+            result.append({
+                "period": str(
+                    item.get("period", "")
+                ),
+                "number": number,
+                "bs": bs,
+                "time": item.get("time"),
+            })
+
+        return result
 
     # =====================================================
-    # GET RULE INFORMATION
+    # NUMBER FREQUENCY
     # =====================================================
 
-    def get_rule(
+    def number_frequency(
         self,
-        sequence: list[str],
-    ) -> Dict:
+        history: List[Dict[str, Any]],
+    ) -> Dict[int, int]:
 
-        run_type, run_length = (
-            self.get_current_run(sequence)
+        counter = Counter()
+
+        for item in history:
+
+            number = item.get("number")
+
+            if number is not None:
+                counter[int(number)] += 1
+
+        return dict(counter)
+
+    # =====================================================
+    # RECENT NUMBERS
+    # =====================================================
+
+    def recent_numbers(
+        self,
+        history: List[Dict[str, Any]],
+        limit: int = 20,
+    ) -> List[int]:
+
+        history = self.normalize(history)
+
+        return [
+            item["number"]
+            for item in history[-limit:]
+        ]
+
+    # =====================================================
+    # COLD NUMBERS
+    # =====================================================
+
+    def cold_numbers(
+        self,
+        history: List[Dict[str, Any]],
+    ) -> List[int]:
+
+        frequency = self.number_frequency(
+            history
         )
 
-        prediction = self.predict(
-            sequence
-        )
+        numbers = list(range(10))
 
-        if run_type:
-
-            pattern = (
-                run_type * run_length
-            )
-
-        else:
-
-            pattern = ""
-
-        return {
-            "run_type": run_type,
-            "run_length": run_length,
-            "pattern": pattern,
-            "prediction": prediction,
-            "rule_key": (
-                f"{run_type}_{run_length}"
-                if run_type
-                else None
+        return sorted(
+            numbers,
+            key=lambda number: frequency.get(
+                number,
+                0,
             ),
-        }
-
-    # =====================================================
-    # FORMULA TABLE
-    # =====================================================
-
-    def get_formula_table(self) -> Dict:
-
-        return {
-            "S": self.s_formula.copy(),
-            "B": self.b_formula.copy(),
-        }
-
-    # =====================================================
-    # CHECK WHETHER RULE EXISTS
-    # =====================================================
-
-    def has_rule(
-        self,
-        sequence: list[str],
-    ) -> bool:
-
-        return (
-            self.predict(sequence)
-            is not None
         )
 
     # =====================================================
-    # ANALYZE
+    # HOT NUMBERS
     # =====================================================
 
-    def analyze(
+    def hot_numbers(
         self,
-        sequence: list[str],
-    ) -> Dict:
+        history: List[Dict[str, Any]],
+    ) -> List[int]:
 
-        rule = self.get_rule(
-            sequence
+        frequency = self.number_frequency(
+            history
         )
 
-        return {
-            "status": (
-                "FOUND"
-                if rule["prediction"]
-                else "NO_RULE"
+        numbers = list(range(10))
+
+        return sorted(
+            numbers,
+            key=lambda number: frequency.get(
+                number,
+                0,
             ),
-            **rule,
+            reverse=True,
+        )
+
+    # =====================================================
+    # RECENT BS
+    # =====================================================
+
+    def recent_bs(
+        self,
+        history: List[Dict[str, Any]],
+        limit: int = 10,
+    ) -> str:
+
+        history = self.normalize(history)
+
+        return "".join(
+            item["bs"]
+            for item in history[-limit:]
+        )
+
+    # =====================================================
+    # BS COUNTS
+    # =====================================================
+
+    def bs_counts(
+        self,
+        history: List[Dict[str, Any]],
+    ) -> Dict[str, int]:
+
+        counter = Counter()
+
+        for item in history:
+
+            bs = item.get("bs")
+
+            if bs in ("B", "S"):
+                counter[bs] += 1
+
+        return {
+            "B": counter.get("B", 0),
+            "S": counter.get("S", 0),
         }
+
+    # =====================================================
+    # ODD / EVEN
+    # =====================================================
+
+    def odd_even_counts(
+        self,
+        history: List[Dict[str, Any]],
+    ) -> Dict[str, int]:
+
+        odd = 0
+        even = 0
+
+        for item in history:
+
+            number = item.get("number")
+
+            if number is None:
+                continue
+
+            if int(number) % 2 == 0:
+                even += 1
+            else:
+                odd += 1
+
+        return {
+            "odd": odd,
+            "even": even,
+        }
+
+    # =====================================================
+    # SIMPLE FORMULA
+    # =====================================================
+
+    def calculate(
+        self,
+        history: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+
+        history = self.normalize(history)
+
+        if not history:
+            return None
+
+        recent = self.recent_numbers(
+            history,
+            limit=10,
+        )
+
+        if not recent:
+            return None
+
+        frequency = self.number_frequency(
+            history
+        )
+
+        bs = self.bs_counts(
+            history
+        )
+
+        odd_even = self.odd_even_counts(
+            history
+        )
+
+        # -------------------------------------------------
+        # Weighted score
+        # -------------------------------------------------
+
+        scores = {
+            number: 0.0
+            for number in range(10)
+        }
+
+        # Historical frequency
+        max_frequency = max(
+            frequency.values()
+        ) if frequency else 1
+
+        for number in range(10):
+
+            freq = frequency.get(
+                number,
+                0,
+            )
+
+            scores[number] += (
+                freq
+                / max_frequency
+                * 30
+            )
+
+        # Recent activity
+        recent_counter = Counter(
+            recent
+        )
+
+        max_recent = max(
+            recent_counter.values()
+        ) if recent_counter else 1
+
+        for number in range(10):
+
+            recent_count = (
+                recent_counter.get(
+                    number,
+                    0,
+                )
+            )
+
+            scores[number] += (
+                recent_count
+                / max_recent
+                * 40
+            )
+
+        # -------------------------------------------------
+        # Small recency adjustment
+        # -------------------------------------------------
+
+        if recent:
+
+            last_number = recent[-1]
+
+            # Avoid simply repeating the
+            # immediately previous number.
+            scores[last_number] -= 5
+
+        # -------------------------------------------------
+        # Best number
+        # -------------------------------------------------
+
+        prediction = max(
+            scores,
+            key=scores.get,
+        )
+
+        sorted_scores = sorted(
+            scores.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
+        best_score = sorted_scores[0][1]
+
+        second_score = (
+            sorted_scores[1][1]
+            if len(sorted_scores) > 1
+            else 0
+        )
+
+        # -------------------------------------------------
+        # Confidence
+        # -------------------------------------------------
+
+        difference = (
+            best_score
+            - second_score
+        )
+
+        confidence = min(
+            95.0,
+            50.0 + difference * 3,
+        )
+
+        confidence = round(
+            confidence,
+            2,
+        )
+
+        prediction_bs = (
+            "B"
+            if prediction >= 5
+            else "S"
+        )
+
+        return {
+
+            "prediction":
+                prediction,
+
+            "bs":
+                prediction_bs,
+
+            "confidence":
+                confidence,
+
+            "scores":
+                {
+                    str(number):
+                        round(
+                            score,
+                            2,
+                        )
+                    for number, score
+                    in scores.items()
+                },
+
+            "recent_numbers":
+                recent,
+
+            "recent_bs":
+                self.recent_bs(
+                    history
+                ),
+
+            "number_frequency":
+                frequency,
+
+            "bs_counts":
+                bs,
+
+            "odd_even":
+                odd_even,
+        }
+
+
+# =========================================================
+# HELPER
+# =========================================================
+
+def calculate_formula(
+    history: List[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+
+    engine = FormulaEngine()
+
+    return engine.calculate(
+        history
+    )

@@ -2,340 +2,588 @@
 # AI-BOT - EVIDENCE ENGINE
 # =========================================================
 
-from typing import Any, Dict, Optional
+import logging
+from typing import Dict, Optional
+
+
+logger = logging.getLogger("EvidenceEngine")
 
 
 class EvidenceEngine:
 
+    # =====================================================
+    # INIT
+    # =====================================================
+
     def __init__(
         self,
-        pattern_weight: float = 0.30,
-        formula_weight: float = 0.25,
-        backtest_weight: float = 0.25,
-        history_weight: float = 0.20,
+        minimum_confidence: float = 50.0,
+        strong_confidence: float = 70.0,
     ):
 
-        self.pattern_weight = pattern_weight
-        self.formula_weight = formula_weight
-        self.backtest_weight = backtest_weight
-        self.history_weight = history_weight
+        self.minimum_confidence = (
+            minimum_confidence
+        )
+
+        self.strong_confidence = (
+            strong_confidence
+        )
 
     # =====================================================
-    # SAFE VALUE
+    # NORMALIZE PREDICTION
     # =====================================================
 
-    def safe_float(
+    @staticmethod
+    def normalize_prediction(
+        value: Optional[str],
+    ) -> Optional[str]:
+
+        if value is None:
+            return None
+
+        value = str(
+            value
+        ).upper().strip()
+
+        if value in ("B", "S"):
+            return value
+
+        return None
+
+    # =====================================================
+    # ADD SIGNAL
+    # =====================================================
+
+    def add_signal(
         self,
-        value: Any,
-    ) -> float:
+        signals: Dict,
+        name: str,
+        prediction: Optional[str],
+        confidence: float,
+        samples: int = 0,
+    ):
+
+        prediction = (
+            self.normalize_prediction(
+                prediction
+            )
+        )
+
+        if prediction is None:
+            return
 
         try:
-            return float(value)
-        except (
-            ValueError,
-            TypeError,
-        ):
-            return 0.0
-
-    # =====================================================
-    # PATTERN SCORE
-    # =====================================================
-
-    def pattern_score(
-        self,
-        pattern: Optional[Dict[str, Any]],
-    ) -> float:
-
-        if not pattern:
-            return 0.0
-
-        strength = self.safe_float(
-            pattern.get(
-                "strength",
-                0,
-            )
-        )
-
-        rate = self.safe_float(
-            pattern.get(
-                "number_rate",
-                0,
-            )
-        )
-
-        matches = self.safe_float(
-            pattern.get(
-                "match_count",
-                0,
-            )
-        )
-
-        # Pattern strength
-        score = (
-            strength * 0.60
-            + rate * 0.30
-            + min(
-                matches * 2,
-                10,
-            )
-        )
-
-        return min(
-            100.0,
-            round(
-                score,
-                2,
-            ),
-        )
-
-    # =====================================================
-    # FORMULA SCORE
-    # =====================================================
-
-    def formula_score(
-        self,
-        formula: Optional[Dict[str, Any]],
-    ) -> float:
-
-        if not formula:
-            return 0.0
-
-        confidence = self.safe_float(
-            formula.get(
-                "confidence",
-                0,
-            )
-        )
-
-        return min(
-            100.0,
-            round(
-                confidence,
-                2,
-            ),
-        )
-
-    # =====================================================
-    # BACKTEST SCORE
-    # =====================================================
-
-    def backtest_score(
-        self,
-        backtest: Optional[
-            Dict[str, Any]
-        ],
-    ) -> float:
-
-        if not backtest:
-            return 0.0
-
-        combined = backtest.get(
-            "combined",
-            {},
-        )
-
-        accuracy = self.safe_float(
-            combined.get(
-                "accuracy",
-                0,
-            )
-        )
-
-        return min(
-            100.0,
-            round(
-                accuracy,
-                2,
-            ),
-        )
-
-    # =====================================================
-    # HISTORY SCORE
-    # =====================================================
-
-    def history_score(
-        self,
-        history_count: int,
-    ) -> float:
-
-        try:
-            count = int(
-                history_count
+            confidence = float(
+                confidence
             )
         except (
             ValueError,
             TypeError,
         ):
-            count = 0
+            confidence = 0.0
 
-        # More historical data gives
-        # more stable evidence.
-        if count >= 1000:
-            return 100.0
+        signals[name] = {
 
-        if count >= 500:
-            return 90.0
+            "prediction":
+                prediction,
 
-        if count >= 200:
-            return 80.0
-
-        if count >= 100:
-            return 70.0
-
-        if count >= 50:
-            return 60.0
-
-        if count >= 20:
-            return 50.0
-
-        if count >= 10:
-            return 40.0
-
-        return 20.0
-
-    # =====================================================
-    # FINAL EVIDENCE
-    # =====================================================
-
-    def calculate(
-        self,
-        pattern: Optional[
-            Dict[str, Any]
-        ],
-        formula: Optional[
-            Dict[str, Any]
-        ],
-        backtest: Optional[
-            Dict[str, Any]
-        ],
-        history_count: int,
-    ) -> Dict[str, Any]:
-
-        pattern_score = (
-            self.pattern_score(
-                pattern
-            )
-        )
-
-        formula_score = (
-            self.formula_score(
-                formula
-            )
-        )
-
-        backtest_score = (
-            self.backtest_score(
-                backtest
-            )
-        )
-
-        history_score = (
-            self.history_score(
-                history_count
-            )
-        )
-
-        final_score = (
-
-            pattern_score
-            * self.pattern_weight
-
-            + formula_score
-            * self.formula_weight
-
-            + backtest_score
-            * self.backtest_weight
-
-            + history_score
-            * self.history_weight
-        )
-
-        final_score = min(
-            100.0,
-            max(
-                0.0,
-                final_score,
-            ),
-        )
-
-        # -------------------------------------------------
-        # Evidence level
-        # -------------------------------------------------
-
-        if final_score >= 80:
-            level = "VERY_STRONG"
-
-        elif final_score >= 70:
-            level = "STRONG"
-
-        elif final_score >= 60:
-            level = "MEDIUM"
-
-        elif final_score >= 50:
-            level = "WEAK"
-
-        else:
-            level = "LOW"
-
-        return {
-
-            "pattern_score":
+            "confidence":
                 round(
-                    pattern_score,
+                    max(
+                        0.0,
+                        min(
+                            100.0,
+                            confidence,
+                        ),
+                    ),
                     2,
                 ),
 
-            "formula_score":
-                round(
-                    formula_score,
-                    2,
-                ),
+            "samples":
+                int(samples),
 
-            "backtest_score":
-                round(
-                    backtest_score,
-                    2,
-                ),
-
-            "history_score":
-                round(
-                    history_score,
-                    2,
-                ),
-
-            "evidence_score":
-                round(
-                    final_score,
-                    2,
-                ),
-
-            "level":
-                level,
         }
 
+    # =====================================================
+    # COLLECT SIGNALS
+    # =====================================================
 
-# =========================================================
-# HELPER
-# =========================================================
+    def collect(
+        self,
+        pattern_result: Optional[Dict],
+        formula_result: Optional[Dict],
+        backtest_result: Optional[Dict],
+    ) -> Dict:
 
-def calculate_evidence(
-    pattern: Optional[
-        Dict[str, Any]
-    ],
-    formula: Optional[
-        Dict[str, Any]
-    ],
-    backtest: Optional[
-        Dict[str, Any]
-    ],
-    history_count: int,
-) -> Dict[str, Any]:
+        signals = {}
 
-    engine = EvidenceEngine()
+        # =================================================
+        # PATTERN SIGNAL
+        # =================================================
 
-    return engine.calculate(
-        pattern=pattern,
-        formula=formula,
-        backtest=backtest,
-        history_count=history_count,
-    )
+        if pattern_result:
+
+            bs_result = (
+                pattern_result.get(
+                    "bs"
+                )
+            )
+
+            if bs_result:
+
+                self.add_signal(
+
+                    signals,
+
+                    "pattern",
+
+                    bs_result.get(
+                        "prediction"
+                    ),
+
+                    bs_result.get(
+                        "confidence",
+                        0.0,
+                    ),
+
+                    bs_result.get(
+                        "matches",
+                        0,
+                    ),
+                )
+
+        # =================================================
+        # FORMULA SIGNAL
+        # =================================================
+
+        if formula_result:
+
+            analysis = (
+                formula_result.get(
+                    "analysis",
+                    {},
+                )
+            )
+
+            rule_stats = (
+                formula_result.get(
+                    "rule_stats",
+                    {},
+                )
+            )
+
+            self.add_signal(
+
+                signals,
+
+                "formula",
+
+                analysis.get(
+                    "prediction"
+                ),
+
+                rule_stats.get(
+                    "accuracy",
+                    0.0,
+                ),
+
+                rule_stats.get(
+                    "samples",
+                    0,
+                ),
+            )
+
+        # =================================================
+        # BACKTEST PATTERN
+        # =================================================
+
+        if backtest_result:
+
+            pattern_stats = (
+                backtest_result.get(
+                    "pattern",
+                    {},
+                )
+            )
+
+            # Backtest pattern itself does not contain
+            # a current prediction, so this signal is
+            # only used as historical reliability.
+            #
+            # Current pattern prediction comes from
+            # pattern_result.
+
+            if "pattern" in signals:
+
+                signals["pattern"][
+                    "backtest_accuracy"
+                ] = pattern_stats.get(
+                    "accuracy",
+                    0.0,
+                )
+
+        # =================================================
+        # BACKTEST FORMULA
+        # =================================================
+
+        if "formula" in signals:
+
+            formula_stats = (
+                backtest_result.get(
+                    "formula",
+                    {},
+                )
+                if backtest_result
+                else {}
+            )
+
+            signals["formula"][
+                "backtest_accuracy"
+            ] = formula_stats.get(
+                "accuracy",
+                0.0,
+            )
+
+        return signals
+
+    # =====================================================
+    # SCORE SIGNAL
+    # =====================================================
+
+    def score_signal(
+        self,
+        signal: Dict,
+    ) -> float:
+
+        confidence = float(
+            signal.get(
+                "confidence",
+                0.0,
+            )
+        )
+
+        backtest_accuracy = float(
+            signal.get(
+                "backtest_accuracy",
+                confidence,
+            )
+        )
+
+        samples = int(
+            signal.get(
+                "samples",
+                0,
+            )
+        )
+
+        # ---------------------------------------------
+        # Main confidence
+        # ---------------------------------------------
+
+        score = (
+            confidence * 0.60
+            + backtest_accuracy * 0.40
+        )
+
+        # ---------------------------------------------
+        # Small sample penalty
+        # ---------------------------------------------
+
+        if samples < 3:
+
+            score *= 0.70
+
+        elif samples < 5:
+
+            score *= 0.85
+
+        elif samples < 10:
+
+            score *= 0.95
+
+        return round(
+            max(
+                0.0,
+                min(
+                    100.0,
+                    score,
+                ),
+            ),
+            2,
+        )
+
+    # =====================================================
+    # BUILD EVIDENCE
+    # =====================================================
+
+    def build(
+        self,
+        pattern_result: Optional[Dict],
+        formula_result: Optional[Dict],
+        backtest_result: Optional[Dict],
+    ) -> Dict:
+
+        signals = self.collect(
+            pattern_result,
+            formula_result,
+            backtest_result,
+        )
+
+        if not signals:
+
+            return {
+
+                "prediction":
+                    None,
+
+                "confidence":
+                    0.0,
+
+                "status":
+                    "NO_EVIDENCE",
+
+                "signals":
+                    {},
+
+                "support":
+                    {},
+
+                "conflict":
+                    False,
+
+            }
+
+        # =================================================
+        # SCORE EACH SIGNAL
+        # =================================================
+
+        for name, signal in signals.items():
+
+            signal["score"] = (
+                self.score_signal(
+                    signal
+                )
+            )
+
+        # =================================================
+        # GROUP BY B / S
+        # =================================================
+
+        support = {
+
+            "B": {
+                "signals": [],
+                "score": 0.0,
+            },
+
+            "S": {
+                "signals": [],
+                "score": 0.0,
+            },
+
+        }
+
+        for name, signal in signals.items():
+
+            prediction = signal[
+                "prediction"
+            ]
+
+            score = signal[
+                "score"
+            ]
+
+            support[
+                prediction
+            ]["signals"].append(
+                name
+            )
+
+            support[
+                prediction
+            ]["score"] += score
+
+        # =================================================
+        # ROUND SCORES
+        # =================================================
+
+        support["B"]["score"] = round(
+            support["B"]["score"],
+            2,
+        )
+
+        support["S"]["score"] = round(
+            support["S"]["score"],
+            2,
+        )
+
+        # =================================================
+        # FINAL SIDE
+        # =================================================
+
+        b_score = support[
+            "B"
+        ]["score"]
+
+        s_score = support[
+            "S"
+        ]["score"]
+
+        if b_score > s_score:
+
+            prediction = "B"
+
+            winning_score = b_score
+            losing_score = s_score
+
+        elif s_score > b_score:
+
+            prediction = "S"
+
+            winning_score = s_score
+            losing_score = b_score
+
+        else:
+
+            prediction = None
+
+            winning_score = 0.0
+            losing_score = 0.0
+
+        # =================================================
+        # EVIDENCE CONFIDENCE
+        # =================================================
+
+        total_score = (
+            b_score + s_score
+        )
+
+        if prediction and total_score > 0:
+
+            confidence = (
+                winning_score
+                / total_score
+                * 100.0
+            )
+
+        else:
+
+            confidence = 0.0
+
+        # =================================================
+        # CONFLICT
+        # =================================================
+
+        conflict = (
+            b_score > 0
+            and s_score > 0
+        )
+
+        # =================================================
+        # STATUS
+        # =================================================
+
+        if not prediction:
+
+            status = "NEUTRAL"
+
+        elif confidence >= (
+            self.strong_confidence
+        ):
+
+            status = "STRONG"
+
+        elif confidence >= (
+            self.minimum_confidence
+        ):
+
+            status = "MODERATE"
+
+        else:
+
+            status = "WEAK"
+
+        result = {
+
+            "prediction":
+                prediction,
+
+            "confidence":
+                round(
+                    confidence,
+                    2,
+                ),
+
+            "status":
+                status,
+
+            "signals":
+                signals,
+
+            "support":
+                support,
+
+            "conflict":
+                conflict,
+
+            "winning_score":
+                round(
+                    winning_score,
+                    2,
+                ),
+
+            "losing_score":
+                round(
+                    losing_score,
+                    2,
+                ),
+
+        }
+
+        logger.info(
+            "Evidence | prediction=%s | "
+            "confidence=%.2f | status=%s",
+            prediction,
+            confidence,
+            status,
+        )
+
+        return result
+
+    # =====================================================
+    # SUMMARY
+    # =====================================================
+
+    @staticmethod
+    def summary(
+        evidence: Dict,
+    ) -> str:
+
+        prediction = evidence.get(
+            "prediction"
+        )
+
+        confidence = evidence.get(
+            "confidence",
+            0.0,
+        )
+
+        status = evidence.get(
+            "status",
+            "UNKNOWN",
+        )
+
+        if prediction == "B":
+            prediction_text = "BIG"
+
+        elif prediction == "S":
+            prediction_text = "SMALL"
+
+        else:
+            prediction_text = "N/A"
+
+        return (
+            f"Prediction={prediction_text} | "
+            f"Confidence={confidence:.2f}% | "
+            f"Status={status}"
+        )

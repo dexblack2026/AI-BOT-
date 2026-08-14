@@ -1,13 +1,11 @@
-import os
-
+# config.py
 
 # =========================================================
 # TELEGRAM
 # =========================================================
 
-TELEGRAM_BOT_TOKEN = os.getenv(
-    "TELEGRAM_BOT_TOKEN",
-    "YOUR_TELEGRAM_BOT_TOKEN"
+TELEGRAM_BOT_TOKEN = (
+    "YOUR_TELEGRAM_BOT_TOKEN_HERE"
 )
 
 
@@ -15,9 +13,8 @@ TELEGRAM_BOT_TOKEN = os.getenv(
 # API AUTH
 # =========================================================
 
-AUTHORIZATION_TOKEN = os.getenv(
-    "AUTHORIZATION_TOKEN",
-    "Bearer YOUR_JWT_TOKEN"
+AUTHORIZATION_TOKEN = (
+    "Bearer YOUR_JWT_TOKEN_HERE"
 )
 
 
@@ -37,7 +34,7 @@ HISTORY_API_URL = (
 
 
 # =========================================================
-# HTTP
+# HTTP HEADERS
 # =========================================================
 
 HEADERS = {
@@ -75,7 +72,7 @@ CHECK_INTERVAL = 3
 # HISTORY STORAGE
 # =========================================================
 
-DATA_FILE = "game_history.json"
+DATA_FILE = "data/game_history.json"
 
 MAX_HISTORY = 2000
 
@@ -92,7 +89,7 @@ MIN_HISTORY_MATCHES = 3
 
 
 # =========================================================
-# FORMULA
+# FORMULA SETTINGS
 # =========================================================
 
 S_FORMULA = {

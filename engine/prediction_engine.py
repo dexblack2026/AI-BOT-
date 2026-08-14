@@ -2,539 +2,433 @@
 # AI-BOT - PREDICTION ENGINE
 # =========================================================
 
-from typing import Any, Dict, List, Optional
+import logging
+from typing import Dict, List, Optional
+
+
+logger = logging.getLogger("PredictionEngine")
 
 
 class PredictionEngine:
 
     def __init__(
         self,
-        min_confidence: float = 50.0,
+        minimum_confidence: float = 50.0,
     ):
-        self.min_confidence = min_confidence
+
+        self.minimum_confidence = (
+            minimum_confidence
+        )
 
     # =====================================================
-    # NEXT PERIOD
+    # PERIOD
     # =====================================================
 
+    @staticmethod
     def next_period(
-        self,
-        history: List[Dict[str, Any]],
-        current_period: Optional[str] = None,
+        current_period: Optional[str],
     ) -> Optional[str]:
 
-        # Current API period ရှိရင်
-        # အဲ့ဒီ period ကို အခြေခံပြီး +1
-        if current_period is not None:
+        if current_period is None:
+            return None
+
+        value = str(
+            current_period
+        ).strip()
+
+        if not value:
+            return None
+
+        # Numeric period
+        try:
+
+            return str(
+                int(value) + 1
+            )
+
+        except ValueError:
+
+            pass
+
+        # If period contains a numeric suffix,
+        # increment the suffix.
+        digits = ""
+
+        for char in reversed(value):
+
+            if char.isdigit():
+
+                digits = (
+                    char + digits
+                )
+
+            else:
+
+                break
+
+        if digits:
+
+            prefix = value[
+                :-len(digits)
+            ]
 
             try:
-                return str(
-                    int(current_period) + 1
-                )
-            except (
-                ValueError,
-                TypeError,
-            ):
-                pass
 
-        # History ထဲက နောက်ဆုံး period
-        if history:
-
-            periods = []
-
-            for item in history:
-
-                period = item.get(
-                    "period"
-                )
-
-                if period is None:
-                    continue
-
-                try:
-                    periods.append(
-                        int(period)
+                return (
+                    prefix
+                    + str(
+                        int(digits) + 1
                     )
-                except (
-                    ValueError,
-                    TypeError,
-                ):
-                    continue
-
-            if periods:
-
-                return str(
-                    max(periods) + 1
                 )
 
+            except ValueError:
+
+                return None
+
         return None
 
     # =====================================================
-    # NUMBER FROM PATTERN
+    # B/S TEXT
     # =====================================================
 
-    def pattern_number(
-        self,
-        pattern: Optional[
-            Dict[str, Any]
-        ],
-    ) -> Optional[int]:
+    @staticmethod
+    def prediction_text(
+        prediction: Optional[str],
+    ) -> str:
 
-        if not pattern:
-            return None
+        if prediction == "B":
+            return "🔴 BIG"
 
-        value = pattern.get(
-            "best_number"
-        )
+        if prediction == "S":
+            return "🔵 SMALL"
 
-        if value is None:
-            return None
+        return "⚠️ NO SIGNAL"
+
+    # =====================================================
+    # SIGNAL SCORE
+    # =====================================================
+
+    @staticmethod
+    def signal_score(
+        evidence: Optional[Dict],
+    ) -> float:
+
+        if not evidence:
+            return 0.0
 
         try:
-            value = int(value)
+
+            return float(
+                evidence.get(
+                    "confidence",
+                    0.0,
+                )
+            )
+
         except (
             ValueError,
             TypeError,
         ):
-            return None
 
-        if 0 <= value <= 9:
-            return value
-
-        return None
+            return 0.0
 
     # =====================================================
-    # NUMBER FROM FORMULA
+    # MEMORY SUPPORT
     # =====================================================
 
-    def formula_number(
-        self,
-        formula: Optional[
-            Dict[str, Any]
-        ],
-    ) -> Optional[int]:
+    @staticmethod
+    def memory_support(
+        memory: Optional[Dict],
+        prediction: Optional[str],
+    ) -> Dict:
 
-        if not formula:
-            return None
+        if not memory or not prediction:
 
-        value = formula.get(
-            "prediction"
+            return {
+                "samples": 0,
+                "accuracy": 0.0,
+                "support": False,
+            }
+
+        samples = int(
+            memory.get(
+                "samples",
+                0,
+            )
         )
 
-        if value is None:
-            return None
+        accuracy = float(
+            memory.get(
+                "accuracy",
+                0.0,
+            )
+        )
 
-        try:
-            value = int(value)
-        except (
-            ValueError,
-            TypeError,
-        ):
-            return None
+        support = (
+            samples >= 3
+            and accuracy >= 50.0
+        )
 
-        if 0 <= value <= 9:
-            return value
+        return {
 
-        return None
+            "samples":
+                samples,
 
-    # =====================================================
-    # SCORE
-    # =====================================================
+            "accuracy":
+                round(
+                    accuracy,
+                    2,
+                ),
 
-    def calculate_scores(
-        self,
-        pattern: Optional[
-            Dict[str, Any]
-        ],
-        formula: Optional[
-            Dict[str, Any]
-        ],
-        evidence: Optional[
-            Dict[str, Any]
-        ],
-    ) -> Dict[int, float]:
+            "support":
+                support,
 
-        scores = {
-            number: 0.0
-            for number in range(10)
         }
 
+    # =====================================================
+    # BUILD FINAL PREDICTION
+    # =====================================================
+
+    def predict(
+        self,
+        current_period: Optional[str],
+        evidence: Optional[Dict],
+        pattern_memory: Optional[Dict] = None,
+        formula_memory: Optional[Dict] = None,
+        pattern: Optional[str] = None,
+        formula_key: Optional[str] = None,
+    ) -> Dict:
+
         # -------------------------------------------------
-        # Pattern
+        # Next Period
         # -------------------------------------------------
 
-        pattern_number = (
-            self.pattern_number(
-                pattern
-            )
+        next_period = self.next_period(
+            current_period
         )
-
-        if pattern_number is not None:
-
-            pattern_strength = float(
-                pattern.get(
-                    "strength",
-                    0,
-                )
-            )
-
-            scores[
-                pattern_number
-            ] += (
-                pattern_strength
-                * 0.40
-            )
-
-        # -------------------------------------------------
-        # Formula
-        # -------------------------------------------------
-
-        formula_number = (
-            self.formula_number(
-                formula
-            )
-        )
-
-        if formula_number is not None:
-
-            formula_confidence = float(
-                formula.get(
-                    "confidence",
-                    0,
-                )
-            )
-
-            scores[
-                formula_number
-            ] += (
-                formula_confidence
-                * 0.30
-            )
 
         # -------------------------------------------------
         # Evidence
         # -------------------------------------------------
 
-        evidence_score = 0.0
+        evidence_prediction = None
 
         if evidence:
 
-            evidence_score = float(
-                evidence.get(
-                    "evidence_score",
-                    0,
-                )
+            value = evidence.get(
+                "prediction"
             )
 
-        # Evidence ကို
-        # Pattern / Formula signal တွေမှာ
-        # အနည်းငယ် weight ပေးထားတယ်။
+            if value in ("B", "S"):
 
-        if pattern_number is not None:
+                evidence_prediction = value
 
-            scores[
-                pattern_number
-            ] += (
-                evidence_score
-                * 0.15
+        evidence_confidence = (
+            self.signal_score(
+                evidence
             )
-
-        if formula_number is not None:
-
-            scores[
-                formula_number
-            ] += (
-                evidence_score
-                * 0.15
-            )
-
-        return scores
-
-    # =====================================================
-    # FINAL PREDICTION
-    # =====================================================
-
-    def predict(
-        self,
-        history: List[Dict[str, Any]],
-        current_period: Optional[str] = None,
-        pattern: Optional[
-            Dict[str, Any]
-        ] = None,
-        formula: Optional[
-            Dict[str, Any]
-        ] = None,
-        evidence: Optional[
-            Dict[str, Any]
-        ] = None,
-    ) -> Dict[str, Any]:
-
-        target_period = self.next_period(
-            history,
-            current_period,
-        )
-
-        scores = self.calculate_scores(
-            pattern,
-            formula,
-            evidence,
-        )
-
-        sorted_scores = sorted(
-            scores.items(),
-            key=lambda item: item[1],
-            reverse=True,
         )
 
         # -------------------------------------------------
-        # No signal
+        # Memory
         # -------------------------------------------------
 
-        if not sorted_scores:
-
-            return {
-                "target_period":
-                    target_period,
-
-                "prediction":
-                    None,
-
-                "bs":
-                    None,
-
-                "confidence":
-                    0.0,
-
-                "method":
-                    "NO_SIGNAL",
-
-                "scores":
-                    {},
-            }
-
-        best_number = (
-            sorted_scores[0][0]
-        )
-
-        best_score = (
-            sorted_scores[0][1]
-        )
-
-        second_score = (
-            sorted_scores[1][1]
-            if len(sorted_scores) > 1
-            else 0.0
-        )
-
-        # -------------------------------------------------
-        # Confidence
-        # -------------------------------------------------
-
-        total_score = sum(
-            scores.values()
-        )
-
-        if total_score > 0:
-
-            confidence = (
-                best_score
-                / total_score
-                * 100
+        pattern_mem = (
+            self.memory_support(
+                pattern_memory,
+                evidence_prediction,
             )
+        )
+
+        formula_mem = (
+            self.memory_support(
+                formula_memory,
+                evidence_prediction,
+            )
+        )
+
+        # -------------------------------------------------
+        # Base confidence
+        # -------------------------------------------------
+
+        confidence = (
+            evidence_confidence
+        )
+
+        # Small memory bonus only when
+        # memory has enough samples.
+        if pattern_mem["support"]:
+
+            confidence += 2.0
+
+        if formula_mem["support"]:
+
+            confidence += 2.0
+
+        confidence = round(
+            min(
+                100.0,
+                confidence,
+            ),
+            2,
+        )
+
+        # -------------------------------------------------
+        # Final status
+        # -------------------------------------------------
+
+        if not evidence_prediction:
+
+            status = "NO_SIGNAL"
+
+        elif confidence >= 70.0:
+
+            status = "STRONG"
+
+        elif confidence >= (
+            self.minimum_confidence
+        ):
+
+            status = "MODERATE"
 
         else:
 
-            confidence = 0.0
-
-        # Add separation bonus
-        separation = (
-            best_score
-            - second_score
-        )
-
-        confidence += min(
-            separation * 0.10,
-            10,
-        )
-
-        confidence = min(
-            99.0,
-            max(
-                0.0,
-                confidence,
-            ),
-        )
-
-        confidence = round(
-            confidence,
-            2,
-        )
+            status = "WEAK"
 
         # -------------------------------------------------
         # Method
         # -------------------------------------------------
 
-        pattern_number = (
-            self.pattern_number(
-                pattern
+        if evidence:
+
+            signals = evidence.get(
+                "signals",
+                {},
             )
-        )
-
-        formula_number = (
-            self.formula_number(
-                formula
-            )
-        )
-
-        if (
-            pattern_number is not None
-            and formula_number is not None
-            and pattern_number
-            == formula_number
-        ):
-
-            method = (
-                "PATTERN + FORMULA"
-            )
-
-        elif pattern_number is not None:
-
-            method = "PATTERN"
-
-        elif formula_number is not None:
-
-            method = "FORMULA"
 
         else:
 
-            method = "EVIDENCE"
+            signals = {}
 
-        prediction_bs = (
-            "B"
-            if best_number >= 5
-            else "S"
-        )
+        method_parts = []
 
-        return {
+        if "pattern" in signals:
+            method_parts.append(
+                "PATTERN"
+            )
 
-            "target_period":
-                target_period,
+        if "formula" in signals:
+            method_parts.append(
+                "FORMULA"
+            )
+
+        if not method_parts:
+
+            method = "NO_EVIDENCE"
+
+        else:
+
+            method = "+".join(
+                method_parts
+            )
+
+        # -------------------------------------------------
+        # Final result
+        # -------------------------------------------------
+
+        result = {
+
+            "current_period":
+                current_period,
+
+            "next_period":
+                next_period,
 
             "prediction":
-                best_number,
+                evidence_prediction,
 
-            "bs":
-                prediction_bs,
+            "prediction_text":
+                self.prediction_text(
+                    evidence_prediction
+                ),
 
             "confidence":
                 confidence,
 
+            "status":
+                status,
+
             "method":
                 method,
 
-            "pattern_number":
-                pattern_number,
+            "pattern":
+                pattern,
 
-            "formula_number":
-                formula_number,
+            "formula_key":
+                formula_key,
 
-            "evidence_score":
-                (
-                    evidence.get(
-                        "evidence_score",
-                        0,
-                    )
-                    if evidence
-                    else 0
-                ),
+            "evidence":
+                evidence or {},
 
-            "scores":
-                {
-                    str(number):
-                    round(
-                        score,
-                        2,
-                    )
-                    for number, score
-                    in sorted_scores
-                },
+            "memory": {
+
+                "pattern":
+                    pattern_mem,
+
+                "formula":
+                    formula_mem,
+
+            },
+
         }
 
+        logger.info(
+            "Prediction | "
+            "current=%s | next=%s | "
+            "prediction=%s | confidence=%.2f",
+            current_period,
+            next_period,
+            evidence_prediction,
+            confidence,
+        )
+
+        return result
+
     # =====================================================
-    # FORMAT FOR TELEGRAM
+    # DISPLAY DATA
     # =====================================================
 
-    def format_prediction(
-        self,
-        result: Dict[str, Any],
-    ) -> str:
+    @staticmethod
+    def display_data(
+        result: Dict,
+    ) -> Dict:
 
-        period = result.get(
-            "target_period"
-        ) or "WAITING"
+        return {
 
-        number = result.get(
-            "prediction"
-        )
+            "period":
+                result.get(
+                    "next_period"
+                ),
 
-        bs = result.get(
-            "bs"
-        ) or "-"
+            "prediction":
+                result.get(
+                    "prediction_text",
+                    "⚠️ NO SIGNAL",
+                ),
 
-        confidence = result.get(
-            "confidence",
-            0,
-        )
+            "confidence":
+                f'{result.get("confidence", 0.0):.2f}%',
 
-        method = result.get(
-            "method",
-            "UNKNOWN",
-        )
+            "method":
+                result.get(
+                    "method",
+                    "NO_EVIDENCE",
+                ),
 
-        if number is None:
-            number_text = "WAITING"
-        else:
-            number_text = str(number)
+            "status":
+                result.get(
+                    "status",
+                    "UNKNOWN",
+                ),
 
-        return (
-            "🔮 <b>NEXT PREDICTION</b>\n\n"
-            f"🎯 Net Period : "
-            f"<code>{period}</code>\n\n"
-            f"🔢 Number : "
-            f"<b>{number_text}</b>\n"
-            f"📊 B/S : "
-            f"<b>{bs}</b>\n"
-            f"🧠 Confidence : "
-            f"<b>{confidence:.2f}%</b>\n"
-            f"⚙️ Method : "
-            f"<code>{method}</code>"
-        )
-
-
-# =========================================================
-# HELPER
-# =========================================================
-
-def make_prediction(
-    history: List[Dict[str, Any]],
-    current_period: Optional[str] = None,
-    pattern: Optional[
-        Dict[str, Any]
-    ] = None,
-    formula: Optional[
-        Dict[str, Any]
-    ] = None,
-    evidence: Optional[
-        Dict[str, Any]
-    ] = None,
-) -> Dict[str, Any]:
-
-    engine = PredictionEngine()
-
-    return engine.predict(
-        history=history,
-        current_period=current_period,
-        pattern=pattern,
-        formula=formula,
-        evidence=evidence,
-    )
+        }

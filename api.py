@@ -93,13 +93,13 @@ class GameAPI:
             "language": 7,
 
             "random":
-                "yylpj8cxd125q9vy7jyousm0d59m2hgq",
+                "dwy8v0fgjf596ciwzghecvvb4ybmz0t1",
 
             "timestamp":
                 int(time.time()),
 
             "signature":
-                "0000000000000000000000005763BF05",
+                "000000000000000000000000567A1D44",
         }
 
     # =====================================================

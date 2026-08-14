@@ -216,7 +216,7 @@ class GameAPI:
             "language": 7,
 
             "random": (
-                "t8g1dwtbcmujvsr72m8j5e465ukhrsh6"
+                "mvi6w6d0tbh63zxr3e6bwk78nrb7tije"
             ),
 
             "timestamp": int(
@@ -224,7 +224,7 @@ class GameAPI:
             ),
 
             "signature": (
-                "0000000000000000000000002B29B4CD"
+                "0000000000000000000000000D969269"
             ),
         }
 

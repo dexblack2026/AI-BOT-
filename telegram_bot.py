@@ -1,16 +1,19 @@
-import logging
+# =========================================================
+# AI-BOT - TELEGRAM BOT
+# =========================================================
 
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
+import asyncio
+import logging
+from typing import Optional
+
+from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder,
+    Application,
     CommandHandler,
-    CallbackQueryHandler,
     ContextTypes,
 )
+
+from prediction_engine import PredictionEngine
 
 
 logger = logging.getLogger("TelegramBot")
@@ -18,109 +21,58 @@ logger = logging.getLogger("TelegramBot")
 
 class TelegramBot:
 
-    def __init__(self, token: str):
+    # =====================================================
+    # INIT
+    # =====================================================
+
+    def __init__(
+        self,
+        token: str,
+        api,
+        pattern_engine,
+        formula_engine,
+        backtest_engine,
+        evidence_engine,
+        memory_engine,
+        learning_engine,
+        game_seconds: int = 60,
+        check_interval: int = 3,
+    ):
 
         self.token = token
 
-        self.app = (
-            ApplicationBuilder()
-            .token(token)
-            .build()
+        self.api = api
+        self.pattern_engine = pattern_engine
+        self.formula_engine = formula_engine
+        self.backtest_engine = backtest_engine
+        self.evidence_engine = evidence_engine
+        self.memory_engine = memory_engine
+        self.learning_engine = learning_engine
+
+        self.game_seconds = game_seconds
+        self.check_interval = check_interval
+
+        self.prediction_engine = (
+            PredictionEngine()
         )
 
-        # ==========================================
-        # COMMANDS
-        # ==========================================
+        self.application: Optional[
+            Application
+        ] = None
 
-        self.app.add_handler(
-            CommandHandler(
-                "start",
-                self.start_command
-            )
-        )
+        self.users = set()
 
-        self.app.add_handler(
-            CommandHandler(
-                "predict",
-                self.predict_command
-            )
-        )
+        self.last_issue = None
+        self.last_prediction = None
 
-        self.app.add_handler(
-            CommandHandler(
-                "stats",
-                self.stats_command
-            )
-        )
+        self.running = False
 
-        self.app.add_handler(
-            CommandHandler(
-                "history",
-                self.history_command
-            )
-        )
+        self.session_wins = 0
+        self.session_losses = 0
 
-        # ==========================================
-        # BUTTONS
-        # ==========================================
-
-        self.app.add_handler(
-            CallbackQueryHandler(
-                self.button_handler
-            )
-        )
-
-    # =================================================
-    # MAIN KEYBOARD
-    # =================================================
-
-    def main_keyboard(self):
-
-        keyboard = [
-
-            [
-                InlineKeyboardButton(
-                    "🔮 PREDICT",
-                    callback_data="predict"
-                ),
-
-                InlineKeyboardButton(
-                    "📊 STATS",
-                    callback_data="stats"
-                ),
-            ],
-
-            [
-                InlineKeyboardButton(
-                    "🧬 PATTERN",
-                    callback_data="pattern"
-                ),
-
-                InlineKeyboardButton(
-                    "📚 HISTORY",
-                    callback_data="history"
-                ),
-            ],
-
-            [
-                InlineKeyboardButton(
-                    "🧠 LEARNING",
-                    callback_data="learning"
-                ),
-
-                InlineKeyboardButton(
-                    "⚙️ ENGINE",
-                    callback_data="engine"
-                ),
-            ],
-
-        ]
-
-        return InlineKeyboardMarkup(keyboard)
-
-    # =================================================
-    # /START
-    # =================================================
+    # =====================================================
+    # START
+    # =====================================================
 
     async def start_command(
         self,
@@ -128,70 +80,24 @@ class TelegramBot:
         context: ContextTypes.DEFAULT_TYPE,
     ):
 
-        text = (
-            "╔══════════════════════════════╗\n"
-            "║     🤖 <b>AI PREDICTION</b>      ║\n"
-            "║        <b>ENGINE</b>             ║\n"
-            "╚══════════════════════════════╝\n\n"
+        if update.effective_chat:
 
-            "🚀 <b>System Online</b>\n\n"
-
-            "🔎 Similar Search     <b>ONLINE</b>\n"
-            "🧬 Pattern Mining     <b>ONLINE</b>\n"
-            "🧪 Backtesting        <b>ONLINE</b>\n"
-            "📚 Evidence           <b>ONLINE</b>\n"
-            "🧠 Memory             <b>ONLINE</b>\n"
-            "⚡ Learning           <b>ONLINE</b>\n"
-            "🔮 Prediction         <b>ONLINE</b>\n\n"
-
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-
-            "📌 <b>Analysis Pipeline</b>\n\n"
-
-            "Historical Data\n"
-            "      ↓\n"
-            "Similar Sequence Search\n"
-            "      ↓\n"
-            "Pattern Mining\n"
-            "      ↓\n"
-            "Backtesting\n"
-            "      ↓\n"
-            "Evidence Check\n"
-            "      ↓\n"
-            "Formula Fallback\n"
-            "      ↓\n"
-            "Prediction\n\n"
-
-            "👇 <b>ရွေးချယ်ပါ</b>"
-        )
+            self.users.add(
+                update.effective_chat.id
+            )
 
         await update.message.reply_text(
-            text,
+            "🤖 <b>AI Prediction Engine Active</b>\n\n"
+            "🎮 SC : <b>60s</b>\n"
+            "📡 Waiting for game data...\n"
+            "🔮 Next Period prediction will "
+            "appear automatically.",
             parse_mode="HTML",
-            reply_markup=self.main_keyboard(),
         )
 
-    # =================================================
-    # /PREDICT
-    # =================================================
-
-    async def predict_command(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
-
-        text = self.prediction_screen()
-
-        await update.message.reply_text(
-            text,
-            parse_mode="HTML",
-            reply_markup=self.main_keyboard(),
-        )
-
-    # =================================================
-    # /STATS
-    # =================================================
+    # =====================================================
+    # STATS
+    # =====================================================
 
     async def stats_command(
         self,
@@ -199,222 +105,567 @@ class TelegramBot:
         context: ContextTypes.DEFAULT_TYPE,
     ):
 
+        total = (
+            self.session_wins
+            + self.session_losses
+        )
+
+        accuracy = (
+            self.session_wins
+            / total
+            * 100.0
+            if total
+            else 0.0
+        )
+
         text = (
-            "╔══════════════════════════════╗\n"
-            "║       📊 <b>STATISTICS</b>       ║\n"
-            "╚══════════════════════════════╝\n\n"
-
-            "🎮 Total Analysis : <code>0</code>\n"
-            "✅ Correct        : <code>0</code>\n"
-            "❌ Wrong          : <code>0</code>\n"
-            "📈 Accuracy       : <code>0.00%</code>\n\n"
-
-            "🧬 Pattern Hits   : <code>0</code>\n"
-            "🧪 Backtest       : <code>0</code>\n"
-            "🧠 Learned Rules  : <code>0</code>"
+            "📊 <b>SESSION STATISTICS</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎮 Rounds : <code>{total}</code>\n"
+            f"✅ Wins : <code>{self.session_wins}</code>\n"
+            f"❌ Losses : <code>{self.session_losses}</code>\n"
+            f"📈 Accuracy : <code>{accuracy:.2f}%</code>"
         )
 
         await update.message.reply_text(
             text,
             parse_mode="HTML",
-            reply_markup=self.main_keyboard(),
         )
 
-    # =================================================
-    # /HISTORY
-    # =================================================
+    # =====================================================
+    # BUILD MESSAGE
+    # =====================================================
 
-    async def history_command(
+    def build_prediction_message(
         self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
+        result: dict,
+    ) -> str:
 
-        text = (
-            "╔══════════════════════════════╗\n"
-            "║       📚 <b>HISTORY</b>          ║\n"
-            "╚══════════════════════════════╝\n\n"
-
-            "📥 Historical data ကို\n"
-            "API Engine ကနေ ရယူပြီး\n"
-            "Search Engine ထဲ ပို့ပါမယ်။\n\n"
-
-            "Status: 🟢 READY"
+        prediction = result.get(
+            "prediction"
         )
 
-        await update.message.reply_text(
-            text,
-            parse_mode="HTML",
-            reply_markup=self.main_keyboard(),
+        if prediction == "B":
+
+            prediction_text = (
+                "🔴 <b>BIG</b>"
+            )
+
+        elif prediction == "S":
+
+            prediction_text = (
+                "🔵 <b>SMALL</b>"
+            )
+
+        else:
+
+            prediction_text = (
+                "⚠️ <b>NO SIGNAL</b>"
+            )
+
+        next_period = result.get(
+            "next_period"
         )
 
-    # =================================================
-    # PREDICTION SCREEN
-    # =================================================
+        confidence = result.get(
+            "confidence",
+            0.0,
+        )
 
-    def prediction_screen(self):
+        method = result.get(
+            "method",
+            "NO_EVIDENCE",
+        )
+
+        status = result.get(
+            "status",
+            "UNKNOWN",
+        )
+
+        if status == "STRONG":
+
+            status_text = (
+                "🟢 <b>STRONG</b>"
+            )
+
+        elif status == "MODERATE":
+
+            status_text = (
+                "🟡 <b>MODERATE</b>"
+            )
+
+        elif status == "WEAK":
+
+            status_text = (
+                "🟠 <b>WEAK</b>"
+            )
+
+        else:
+
+            status_text = (
+                "⚪ <b>NO SIGNAL</b>"
+            )
 
         return (
-            "╔══════════════════════════════╗\n"
-            "║      🔮 <b>PREDICTION</b>        ║\n"
-            "╚══════════════════════════════╝\n\n"
-
-            "🎯 Target Issue\n"
-            "   <code>WAITING...</code>\n\n"
-
-            "🔮 Prediction\n"
-            "   <b>WAITING...</b>\n\n"
-
-            "🧬 Method\n"
-            "   <code>WAITING...</code>\n\n"
-
-            "🔍 Pattern\n"
-            "   <code>WAITING...</code>\n\n"
-
-            "🔢 Historical Matches\n"
-            "   <code>0</code>\n\n"
-
-            "🧪 Backtest\n"
-            "   <code>0.00%</code>\n\n"
-
-            "🧠 Evidence\n"
-            "   <code>WAITING...</code>\n\n"
-
-            "⚡ Status: <b>ENGINE READY</b>"
+            "🤖 <b>AI PREDICTION</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎮 <b>SC : {self.game_seconds}s</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 <b>NEXT PERIOD</b>\n"
+            f"<code>{next_period or 'N/A'}</code>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🔮 <b>PREDICTION</b>\n"
+            f"{prediction_text}\n\n"
+            f"🧠 <b>CONFIDENCE</b>\n"
+            f"<code>{confidence:.2f}%</code>\n\n"
+            f"⚙️ <b>METHOD</b>\n"
+            f"<code>{method}</code>\n\n"
+            f"📊 <b>STATUS</b>\n"
+            f"{status_text}\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         )
 
-    # =================================================
-    # BUTTON HANDLER
-    # =================================================
+    # =====================================================
+    # GET DATA
+    # =====================================================
 
-    async def button_handler(
-        self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-    ):
+    async def get_data(self):
 
-        query = update.callback_query
-
-        await query.answer()
-
-        action = query.data
-
-        # ---------------------------------------------
-        # Prediction
-        # ---------------------------------------------
-
-        if action == "predict":
-
-            await query.message.reply_text(
-                self.prediction_screen(),
-                parse_mode="HTML",
-                reply_markup=self.main_keyboard(),
-            )
-
-        # ---------------------------------------------
-        # Stats
-        # ---------------------------------------------
-
-        elif action == "stats":
-
-            await query.message.reply_text(
-                "📊 <b>Statistics Engine</b>\n\n"
-                "Status: 🟢 ONLINE",
-                parse_mode="HTML",
-                reply_markup=self.main_keyboard(),
-            )
-
-        # ---------------------------------------------
-        # Pattern
-        # ---------------------------------------------
-
-        elif action == "pattern":
-
-            await query.message.reply_text(
-                "🧬 <b>Pattern Mining</b>\n\n"
-                "Historical sequence search "
-                "engine is ready.",
-                parse_mode="HTML",
-                reply_markup=self.main_keyboard(),
-            )
-
-        # ---------------------------------------------
-        # History
-        # ---------------------------------------------
-
-        elif action == "history":
-
-            await query.message.reply_text(
-                "📚 <b>Historical Data</b>\n\n"
-                "API → History → Search Engine",
-                parse_mode="HTML",
-                reply_markup=self.main_keyboard(),
-            )
-
-        # ---------------------------------------------
-        # Learning
-        # ---------------------------------------------
-
-        elif action == "learning":
-
-            await query.message.reply_text(
-                "🧠 <b>Learning Engine</b>\n\n"
-                "Memory and backtest learning "
-                "will be connected next.",
-                parse_mode="HTML",
-                reply_markup=self.main_keyboard(),
-            )
-
-        # ---------------------------------------------
-        # Engine
-        # ---------------------------------------------
-
-        elif action == "engine":
-
-            await query.message.reply_text(
-                "⚙️ <b>ENGINE STATUS</b>\n\n"
-                "🔎 Search       🟢\n"
-                "🧬 Pattern      🟢\n"
-                "🧪 Backtest     🟢\n"
-                "📚 Evidence     🟢\n"
-                "🧠 Memory       🟢\n"
-                "⚡ Learning     🟢\n"
-                "🔮 Prediction   🟢",
-                parse_mode="HTML",
-                reply_markup=self.main_keyboard(),
-            )
-
-    # =================================================
-    # START BOT
-    # =================================================
-
-    async def start(self):
-
-        logger.info(
-            "Starting Telegram Bot..."
-        )
-
-        await self.app.initialize()
-
-        await self.app.start()
-
-        await self.app.updater.start_polling()
-
-        logger.info(
-            "✅ Telegram Bot is running."
-        )
-
-        # Keep application alive
         try:
 
-            while True:
+            # api.py ထဲမှာ ဒီ method ရှိရမယ်
+            return await self.api.get_game_data()
 
-                await __import__("asyncio").sleep(3600)
+        except Exception as error:
 
-        finally:
+            logger.error(
+                "API error: %s",
+                error,
+            )
 
-            await self.app.updater.stop()
+            return None, []
 
-            await self.app.stop()
+    # =====================================================
+    # PROCESS GAME
+    # =====================================================
 
-            await self.app.shutdown()
+    async def process_game(
+        self,
+    ):
+
+        current_period, history = (
+            await self.get_data()
+        )
+
+        if not current_period:
+            return
+
+        if not history:
+            return
+
+        # -------------------------------------------------
+        # Prevent duplicate prediction
+        # -------------------------------------------------
+
+        if (
+            self.last_issue
+            == current_period
+        ):
+
+            return
+
+        # -------------------------------------------------
+        # Actual previous result
+        # -------------------------------------------------
+
+        if (
+            self.last_prediction
+            and history
+        ):
+
+            actual = history[-1].get(
+                "bs"
+            )
+
+            old_prediction = (
+                self.last_prediction.get(
+                    "prediction"
+                )
+            )
+
+            evaluation = (
+                self.learning_engine.evaluate(
+                    old_prediction,
+                    actual,
+                )
+            )
+
+            if evaluation.get(
+                "valid"
+            ):
+
+                if evaluation.get(
+                    "correct"
+                ):
+
+                    self.session_wins += 1
+
+                else:
+
+                    self.session_losses += 1
+
+                # -----------------------------------------
+                # Learn
+                # -----------------------------------------
+
+                self.learning_engine.learn(
+
+                    pattern=self.last_prediction.get(
+                        "pattern"
+                    ),
+
+                    pattern_prediction=self.last_prediction.get(
+                        "prediction"
+                    ),
+
+                    formula_key=self.last_prediction.get(
+                        "formula_key"
+                    ),
+
+                    formula_prediction=self.last_prediction.get(
+                        "formula_prediction"
+                    ),
+
+                    actual_result=actual,
+                )
+
+        # -------------------------------------------------
+        # Pattern Engine
+        # -------------------------------------------------
+
+        try:
+
+            pattern_result = (
+                self.pattern_engine.analyze(
+                    history
+                )
+            )
+
+        except Exception as error:
+
+            logger.error(
+                "Pattern engine error: %s",
+                error,
+            )
+
+            pattern_result = {}
+
+        # -------------------------------------------------
+        # Formula Engine
+        # -------------------------------------------------
+
+        try:
+
+            formula_result = (
+                self.formula_engine.analyze(
+                    history
+                )
+            )
+
+        except Exception as error:
+
+            logger.error(
+                "Formula engine error: %s",
+                error,
+            )
+
+            formula_result = {}
+
+        # -------------------------------------------------
+        # Backtest
+        # -------------------------------------------------
+
+        try:
+
+            backtest_result = (
+                self.backtest_engine.run(
+                    history,
+                    getattr(
+                        self.formula_engine,
+                        "s_formula",
+                        {},
+                    ),
+                    getattr(
+                        self.formula_engine,
+                        "b_formula",
+                        {},
+                    ),
+                )
+            )
+
+        except Exception as error:
+
+            logger.error(
+                "Backtest engine error: %s",
+                error,
+            )
+
+            backtest_result = {}
+
+        # -------------------------------------------------
+        # Evidence
+        # -------------------------------------------------
+
+        try:
+
+            evidence = (
+                self.evidence_engine.build(
+                    pattern_result,
+                    formula_result,
+                    backtest_result,
+                )
+            )
+
+        except Exception as error:
+
+            logger.error(
+                "Evidence engine error: %s",
+                error,
+            )
+
+            evidence = {}
+
+        # -------------------------------------------------
+        # Pattern Memory
+        # -------------------------------------------------
+
+        pattern = None
+
+        if pattern_result:
+
+            pattern = (
+                pattern_result.get(
+                    "pattern"
+                )
+            )
+
+        pattern_memory = {}
+
+        if pattern:
+
+            pattern_memory = (
+                self.memory_engine.get_pattern(
+                    pattern
+                )
+            )
+
+        # -------------------------------------------------
+        # Formula Memory
+        # -------------------------------------------------
+
+        formula_key = None
+
+        if formula_result:
+
+            formula_key = (
+                formula_result.get(
+                    "rule_key"
+                )
+            )
+
+        formula_memory = {}
+
+        if formula_key:
+
+            formula_memory = (
+                self.memory_engine.get_formula(
+                    formula_key
+                )
+            )
+
+        # -------------------------------------------------
+        # Final Prediction
+        # -------------------------------------------------
+
+        result = (
+            self.prediction_engine.predict(
+
+                current_period=current_period,
+
+                evidence=evidence,
+
+                pattern_memory=pattern_memory,
+
+                formula_memory=formula_memory,
+
+                pattern=pattern,
+
+                formula_key=formula_key,
+            )
+        )
+
+        # -------------------------------------------------
+        # Save current prediction
+        # -------------------------------------------------
+
+        self.last_issue = (
+            current_period
+        )
+
+        self.last_prediction = {
+
+            "period":
+                result.get(
+                    "next_period"
+                ),
+
+            "prediction":
+                result.get(
+                    "prediction"
+                ),
+
+            "pattern":
+                pattern,
+
+            "formula_key":
+                formula_key,
+
+            "formula_prediction":
+                (
+                    formula_result.get(
+                        "prediction"
+                    )
+                    if formula_result
+                    else None
+                ),
+
+        }
+
+        # -------------------------------------------------
+        # Telegram message
+        # -------------------------------------------------
+
+        message = (
+            self.build_prediction_message(
+                result
+            )
+        )
+
+        await self.broadcast(
+            message
+        )
+
+    # =====================================================
+    # BROADCAST
+    # =====================================================
+
+    async def broadcast(
+        self,
+        message: str,
+    ):
+
+        if not self.application:
+            return
+
+        for chat_id in list(
+            self.users
+        ):
+
+            try:
+
+                await self.application.bot.send_message(
+                    chat_id=chat_id,
+                    text=message,
+                    parse_mode="HTML",
+                )
+
+            except Exception as error:
+
+                logger.error(
+                    "Telegram send error %s: %s",
+                    chat_id,
+                    error,
+                )
+
+    # =====================================================
+    # AUTO LOOP
+    # =====================================================
+
+    async def auto_loop(
+        self,
+    ):
+
+        self.running = True
+
+        while self.running:
+
+            try:
+
+                await self.process_game()
+
+            except Exception as error:
+
+                logger.exception(
+                    "Auto loop error: %s",
+                    error,
+                )
+
+            await asyncio.sleep(
+                self.check_interval
+            )
+
+    # =====================================================
+    # POST INIT
+    # =====================================================
+
+    async def post_init(
+        self,
+        application: Application,
+    ):
+
+        self.application = (
+            application
+        )
+
+        asyncio.create_task(
+            self.auto_loop()
+        )
+
+    # =====================================================
+    # RUN
+    # =====================================================
+
+    def run(
+        self,
+    ):
+
+        application = (
+            Application.builder()
+            .token(self.token)
+            .post_init(self.post_init)
+            .build()
+        )
+
+        self.application = (
+            application
+        )
+
+        application.add_handler(
+            CommandHandler(
+                "start",
+                self.start_command,
+            )
+        )
+
+        application.add_handler(
+            CommandHandler(
+                "stats",
+                self.stats_command,
+            )
+        )
+
+        logger.info(
+            "Telegram bot started"
+        )
+
+        application.run_polling()

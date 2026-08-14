@@ -2,432 +2,538 @@
 # AI-BOT - SEARCH ENGINE
 # =========================================================
 
-from collections import Counter
-from typing import Any, Dict, List, Optional
+import logging
+from typing import Dict, List, Optional
+
+from config import (
+    MIN_HISTORY_MATCHES,
+    MIN_PATTERN_LENGTH,
+    MAX_PATTERN_LENGTH,
+)
+
+
+logger = logging.getLogger("SearchEngine")
 
 
 class SearchEngine:
 
+    # =====================================================
+    # INIT
+    # =====================================================
+
     def __init__(
         self,
-        min_length: int = 3,
-        max_length: int = 12,
-        min_matches: int = 1,
+        min_matches: int = MIN_HISTORY_MATCHES,
+        min_length: int = MIN_PATTERN_LENGTH,
+        max_length: int = MAX_PATTERN_LENGTH,
     ):
 
+        self.min_matches = min_matches
         self.min_length = min_length
         self.max_length = max_length
-        self.min_matches = min_matches
 
     # =====================================================
-    # NORMALIZE
+    # NUMBER SEQUENCE
     # =====================================================
 
-    def normalize(
-        self,
-        history: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+    @staticmethod
+    def number_sequence(
+        history: List[Dict],
+    ) -> List[int]:
 
-        result = []
+        sequence = []
 
         for item in history:
 
-            if not isinstance(item, dict):
-                continue
-
-            period = item.get("period")
             number = item.get("number")
 
-            if period is None or number is None:
-                continue
-
             try:
-                number = int(number)
-            except (ValueError, TypeError):
-                continue
-
-            bs = item.get("bs")
-
-            if bs not in ("B", "S"):
-
-                bs = (
-                    "B"
-                    if number >= 5
-                    else "S"
+                sequence.append(
+                    int(number)
                 )
 
-            result.append({
-                "period": str(period),
-                "number": number,
-                "bs": bs,
-                "time": item.get("time"),
-            })
+            except (
+                ValueError,
+                TypeError,
+            ):
 
-        return result
+                continue
+
+        return sequence
 
     # =====================================================
     # B/S SEQUENCE
     # =====================================================
 
-    def get_sequence(
+    @staticmethod
+    def bs_sequence(
+        history: List[Dict],
+    ) -> List[str]:
+
+        sequence = []
+
+        for item in history:
+
+            bs = str(
+                item.get("bs", "")
+            ).upper()
+
+            if bs in ("B", "S"):
+
+                sequence.append(bs)
+
+        return sequence
+
+    # =====================================================
+    # EXACT NUMBER CONTEXT SEARCH
+    # =====================================================
+
+    def search_number_context(
         self,
-        history: List[Dict[str, Any]],
-    ) -> str:
+        sequence: List[int],
+        pattern: List[int],
+    ) -> List[int]:
 
-        return "".join(
-            item["bs"]
-            for item in history
-            if item["bs"] in ("B", "S")
-        )
-
-    # =====================================================
-    # LATEST PATTERN
-    # =====================================================
-
-    def latest_pattern(
-        self,
-        history: List[Dict[str, Any]],
-        length: int,
-    ) -> Optional[str]:
-
-        history = self.normalize(history)
-
-        if len(history) < length:
-            return None
-
-        sequence = self.get_sequence(history)
-
-        if len(sequence) < length:
-            return None
-
-        return sequence[-length:]
-
-    # =====================================================
-    # SEARCH PATTERN
-    # =====================================================
-
-    def search(
-        self,
-        history: List[Dict[str, Any]],
-        pattern: str,
-    ) -> List[Dict[str, Any]]:
-
-        history = self.normalize(history)
-
-        pattern = pattern.upper().strip()
-
-        if not pattern:
-            return []
-
-        if any(
-            char not in ("B", "S")
-            for char in pattern
-        ):
+        if not sequence or not pattern:
             return []
 
         length = len(pattern)
 
-        matches = []
+        results = []
 
-        # Need one result after pattern
-        if len(history) <= length:
-            return []
-
-        for index in range(
-            len(history) - length
+        # Need one result after the pattern
+        for i in range(
+            len(sequence) - length
         ):
 
-            window = history[
-                index:index + length
+            current = sequence[
+                i:i + length
             ]
 
-            sequence = "".join(
-                item["bs"]
-                for item in window
+            if current == pattern:
+
+                next_index = i + length
+
+                if next_index < len(sequence):
+
+                    results.append(
+                        sequence[next_index]
+                    )
+
+        return results
+
+    # =====================================================
+    # EXACT B/S CONTEXT SEARCH
+    # =====================================================
+
+    def search_bs_context(
+        self,
+        sequence: List[str],
+        pattern: str,
+    ) -> List[str]:
+
+        if not sequence or not pattern:
+            return []
+
+        length = len(pattern)
+
+        results = []
+
+        for i in range(
+            len(sequence) - length
+        ):
+
+            current = "".join(
+                sequence[
+                    i:i + length
+                ]
             )
 
-            if sequence != pattern:
-                continue
+            if current == pattern:
 
-            next_item = history[
-                index + length
+                next_index = i + length
+
+                if next_index < len(sequence):
+
+                    results.append(
+                        sequence[next_index]
+                    )
+
+        return results
+
+    # =====================================================
+    # FIND LONGEST B/S PATTERN
+    # =====================================================
+
+    def find_longest_bs_pattern(
+        self,
+        history: List[Dict],
+    ) -> Optional[Dict]:
+
+        sequence = self.bs_sequence(
+            history
+        )
+
+        if len(sequence) < self.min_length + 1:
+
+            return None
+
+        maximum = min(
+            self.max_length,
+            len(sequence) - 1,
+        )
+
+        # Longest → shortest
+        for length in range(
+            maximum,
+            self.min_length - 1,
+            -1,
+        ):
+
+            pattern = "".join(
+                sequence[-length:]
+            )
+
+            matches = (
+                self.search_bs_context(
+                    sequence[:-1],
+                    pattern,
+                )
+            )
+
+            if len(matches) >= self.min_matches:
+
+                return {
+
+                    "pattern":
+                        pattern,
+
+                    "length":
+                        length,
+
+                    "matches":
+                        matches,
+
+                    "match_count":
+                        len(matches),
+
+                }
+
+        return None
+
+    # =====================================================
+    # FIND LONGEST NUMBER PATTERN
+    # =====================================================
+
+    def find_longest_number_pattern(
+        self,
+        history: List[Dict],
+    ) -> Optional[Dict]:
+
+        sequence = self.number_sequence(
+            history
+        )
+
+        if len(sequence) < self.min_length + 1:
+
+            return None
+
+        maximum = min(
+            self.max_length,
+            len(sequence) - 1,
+        )
+
+        for length in range(
+            maximum,
+            self.min_length - 1,
+            -1,
+        ):
+
+            pattern = sequence[
+                -length:
             ]
 
-            matches.append({
+            matches = (
+                self.search_number_context(
+                    sequence[:-1],
+                    pattern,
+                )
+            )
 
-                "pattern": pattern,
+            if len(matches) >= self.min_matches:
 
-                "matched_period": (
-                    window[-1]["period"]
-                ),
+                return {
 
-                "next_period": (
-                    next_item["period"]
-                ),
+                    "pattern":
+                        pattern,
 
-                "next_number": (
-                    next_item["number"]
-                ),
+                    "length":
+                        length,
 
-                "next_bs": (
-                    next_item["bs"]
-                ),
+                    "matches":
+                        matches,
 
-                "next_time": (
-                    next_item.get("time")
-                ),
-            })
+                    "match_count":
+                        len(matches),
 
-        return matches
+                }
+
+        return None
 
     # =====================================================
-    # SEARCH LATEST
+    # SEARCH ALL B/S PATTERNS
     # =====================================================
 
-    def search_latest(
+    def search_bs_patterns(
         self,
-        history: List[Dict[str, Any]],
-        length: int,
-    ) -> Dict[str, Any]:
+        history: List[Dict],
+    ) -> List[Dict]:
 
-        history = self.normalize(history)
-
-        pattern = self.latest_pattern(
-            history,
-            length,
+        sequence = self.bs_sequence(
+            history
         )
 
-        if pattern is None:
+        if len(sequence) < self.min_length + 1:
 
-            return {
-                "pattern": None,
-                "matches": [],
-                "match_count": 0,
-                "numbers": {},
-                "bs": {},
-            }
-
-        matches = self.search(
-            history,
-            pattern,
-        )
-
-        number_counter = Counter(
-            item["next_number"]
-            for item in matches
-        )
-
-        bs_counter = Counter(
-            item["next_bs"]
-            for item in matches
-        )
-
-        return {
-
-            "pattern": pattern,
-
-            "matches": matches,
-
-            "match_count": len(matches),
-
-            "numbers": dict(
-                number_counter
-            ),
-
-            "bs": dict(
-                bs_counter
-            ),
-        }
-
-    # =====================================================
-    # SEARCH ALL PATTERN LENGTHS
-    # =====================================================
-
-    def search_all(
-        self,
-        history: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
-
-        history = self.normalize(history)
+            return []
 
         results = []
 
         maximum = min(
             self.max_length,
-            len(history) - 1,
+            len(sequence) - 1,
         )
 
         for length in range(
-            self.min_length,
-            maximum + 1,
+            maximum,
+            self.min_length - 1,
+            -1,
         ):
 
-            result = self.search_latest(
-                history,
-                length,
+            pattern = "".join(
+                sequence[-length:]
             )
 
-            if (
-                result["match_count"]
-                >= self.min_matches
-            ):
+            matches = (
+                self.search_bs_context(
+                    sequence[:-1],
+                    pattern,
+                )
+            )
+
+            if len(matches) >= self.min_matches:
 
                 results.append({
-                    "length": length,
-                    **result,
+
+                    "pattern":
+                        pattern,
+
+                    "length":
+                        length,
+
+                    "matches":
+                        matches,
+
+                    "match_count":
+                        len(matches),
+
                 })
 
         return results
 
     # =====================================================
-    # NUMBER COUNTS
+    # SEARCH ALL NUMBER PATTERNS
     # =====================================================
 
-    def number_counts(
+    def search_number_patterns(
         self,
-        matches: List[Dict[str, Any]],
-    ) -> Dict[int, int]:
+        history: List[Dict],
+    ) -> List[Dict]:
 
-        counter = Counter()
-
-        for item in matches:
-
-            number = item.get(
-                "next_number"
-            )
-
-            if number is None:
-                continue
-
-            counter[int(number)] += 1
-
-        return dict(
-            sorted(
-                counter.items()
-            )
-        )
-
-    # =====================================================
-    # B/S COUNTS
-    # =====================================================
-
-    def bs_counts(
-        self,
-        matches: List[Dict[str, Any]],
-    ) -> Dict[str, int]:
-
-        counter = Counter()
-
-        for item in matches:
-
-            bs = item.get(
-                "next_bs"
-            )
-
-            if bs in ("B", "S"):
-
-                counter[bs] += 1
-
-        return dict(counter)
-
-    # =====================================================
-    # BEST RESULT
-    # =====================================================
-
-    def best_result(
-        self,
-        history: List[Dict[str, Any]],
-    ) -> Optional[Dict[str, Any]]:
-
-        results = self.search_all(
+        sequence = self.number_sequence(
             history
         )
 
-        if not results:
-            return None
+        if len(sequence) < self.min_length + 1:
 
-        # Prefer:
-        # 1. More matches
-        # 2. Longer pattern
+            return []
 
-        results.sort(
-            key=lambda item: (
-                item["match_count"],
-                item["length"],
-            ),
-            reverse=True,
+        results = []
+
+        maximum = min(
+            self.max_length,
+            len(sequence) - 1,
         )
 
-        best = results[0]
+        for length in range(
+            maximum,
+            self.min_length - 1,
+            -1,
+        ):
 
-        matches = best["matches"]
+            pattern = sequence[
+                -length:
+            ]
 
-        number_counts = self.number_counts(
-            matches
-        )
-
-        bs_counts = self.bs_counts(
-            matches
-        )
-
-        best_number = None
-
-        if number_counts:
-
-            best_number = max(
-                number_counts,
-                key=number_counts.get,
+            matches = (
+                self.search_number_context(
+                    sequence[:-1],
+                    pattern,
+                )
             )
 
-        best_bs = None
+            if len(matches) >= self.min_matches:
 
-        if bs_counts:
+                results.append({
 
-            best_bs = max(
-                bs_counts,
-                key=bs_counts.get,
-            )
+                    "pattern":
+                        pattern,
+
+                    "length":
+                        length,
+
+                    "matches":
+                        matches,
+
+                    "match_count":
+                        len(matches),
+
+                })
+
+        return results
+
+    # =====================================================
+    # CURRENT RUN
+    # =====================================================
+
+    @staticmethod
+    def current_bs_run(
+        history: List[Dict],
+    ) -> Dict:
+
+        sequence = SearchEngine.bs_sequence(
+            history
+        )
+
+        if not sequence:
+
+            return {
+
+                "type": None,
+                "length": 0,
+                "pattern": "",
+
+            }
+
+        last = sequence[-1]
+
+        count = 0
+
+        for value in reversed(
+            sequence
+        ):
+
+            if value == last:
+
+                count += 1
+
+            else:
+
+                break
 
         return {
 
-            "pattern":
-                best["pattern"],
+            "type":
+                last,
 
             "length":
-                best["length"],
+                count,
 
-            "match_count":
-                best["match_count"],
+            "pattern":
+                last * count,
 
-            "matches":
-                matches,
-
-            "number_counts":
-                number_counts,
-
-            "bs_counts":
-                bs_counts,
-
-            "best_number":
-                best_number,
-
-            "best_bs":
-                best_bs,
         }
 
+    # =====================================================
+    # COMPLETE SEARCH
+    # =====================================================
 
-# =========================================================
-# HELPER
-# =========================================================
+    def search(
+        self,
+        history: List[Dict],
+    ) -> Dict:
 
-def find_pattern(
-    history: List[Dict[str, Any]],
-    pattern: str,
-) -> List[Dict[str, Any]]:
+        if not history:
 
-    engine = SearchEngine()
+            return {
 
-    return engine.search(
-        history,
-        pattern,
-    )
+                "history_size": 0,
+
+                "bs_sequence": [],
+
+                "number_sequence": [],
+
+                "current_run": None,
+
+                "longest_bs_pattern": None,
+
+                "longest_number_pattern": None,
+
+                "bs_patterns": [],
+
+                "number_patterns": [],
+
+            }
+
+        bs_seq = self.bs_sequence(
+            history
+        )
+
+        number_seq = self.number_sequence(
+            history
+        )
+
+        result = {
+
+            "history_size":
+                len(history),
+
+            "bs_sequence":
+                bs_seq,
+
+            "number_sequence":
+                number_seq,
+
+            "current_run":
+                self.current_bs_run(
+                    history
+                ),
+
+            "longest_bs_pattern":
+                self.find_longest_bs_pattern(
+                    history
+                ),
+
+            "longest_number_pattern":
+                self.find_longest_number_pattern(
+                    history
+                ),
+
+            "bs_patterns":
+                self.search_bs_patterns(
+                    history
+                ),
+
+            "number_patterns":
+                self.search_number_patterns(
+                    history
+                ),
+
+        }
+
+        logger.info(
+            "Search complete | history=%d",
+            len(history),
+        )
+
+        return result

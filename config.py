@@ -1,13 +1,21 @@
 # =========================================================
-# AI-BOT CONFIGURATION
-# SC 60s GAME
+# AI-BOT - CONFIGURATION
 # =========================================================
 
+import os
+
+
 # =========================================================
-# TELEGRAM
+# TELEGRAM BOT
 # =========================================================
 
-TELEGRAM_BOT_TOKEN = (
+# @BotFather မှရတဲ့ Telegram Bot Token
+#
+# VPS မှာ environment variable သုံးနိုင်ပါတယ်။
+# မထည့်ထားရင် placeholder ကို အသုံးပြုပါမယ်။
+
+TELEGRAM_BOT_TOKEN = os.getenv(
+    "TELEGRAM_BOT_TOKEN",
     "8910093120:AAEXKCBhY18J2zZ2rDTKvImFlWiWOuhDBJQ"
 )
 
@@ -15,21 +23,30 @@ TELEGRAM_BOT_TOKEN = (
 # =========================================================
 # API AUTHORIZATION
 # =========================================================
-# Supabase / Website Authorization Bearer Token
 
-AUTHORIZATION_TOKEN = (
+# မူရင်း code မှာ အသုံးပြုထားတဲ့
+# Supabase Authorization Bearer Token
+#
+# VPS environment variable:
+#
+# export AUTHORIZATION_TOKEN="Bearer YOUR_TOKEN"
+#
+# လုပ်ထားနိုင်ပါတယ်။
+
+AUTHORIZATION_TOKEN = os.getenv(
+    "AUTHORIZATION_TOKEN",
     "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiIzNmI0ZWNiZi1hNzMzLTQyNzctOTY5OC1iM2FmYmY5OTE1ZjAiLCJVc2VyTmFtZSI6Ijk3Nzg5MDUyMjAiLCJuYW1lIjoiTWVtYmVyUUs3WVZNUU8iLCJleHAiOjE3ODY3MjY3MTd9.uatfENIuYW4JzKAPRo5jvL-1W2Yv5M5s9sKbBHRbwhM"
 )
 
 
 # =========================================================
-# GAME SETTINGS
+# GAME
 # =========================================================
 
-# SC = Game Time
-GAME_TIME = 60
+# SC Game Time
+GAME_SECONDS = 60
 
-# API checking interval
+# API polling interval
 CHECK_INTERVAL = 3
 
 
@@ -49,11 +66,10 @@ HISTORY_API_URL = (
 
 
 # =========================================================
-# HTTP HEADERS
+# API HEADERS
 # =========================================================
 
 HEADERS = {
-
     "accept": "*/*",
 
     "accept-language":
@@ -71,14 +87,15 @@ HEADERS = {
     "referer":
         "https://mini-game.site/",
 
-    "user-agent": (
-        "Mozilla/5.0 "
-        "(Linux; Android 10; K) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/150.0.0.0 "
-        "Mobile Safari/537.36"
-    ),
+    "user-agent":
+        (
+            "Mozilla/5.0 "
+            "(Linux; Android 10; K) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/150.0.0.0 "
+            "Mobile Safari/537.36"
+        ),
 }
 
 
@@ -86,26 +103,51 @@ HEADERS = {
 # API REQUEST
 # =========================================================
 
-REQUEST_TIMEOUT = 8
+API_TIMEOUT = 8
 
-PAGE_SIZE = 500
+HISTORY_PAGE_SIZE = 500
 
-PAGE_NUMBER = 1
+HISTORY_PAGE_NUMBER = 1
 
 
 # =========================================================
-# HISTORY
+# DATA
 # =========================================================
 
-DATA_FILE = (
-    "data/game_history.json"
+DATA_DIR = "data"
+
+DATA_FILE = os.path.join(
+    DATA_DIR,
+    "game_history.json"
 )
 
-MAX_HISTORY = 2000
+
+# =========================================================
+# MEMORY
+# =========================================================
+
+MODELS_DIR = "models"
+
+PATTERN_MEMORY_FILE = os.path.join(
+    MODELS_DIR,
+    "pattern_memory.json"
+)
+
+FORMULA_MEMORY_FILE = os.path.join(
+    MODELS_DIR,
+    "formula_memory.json"
+)
 
 
 # =========================================================
-# PATTERN SEARCH
+# HISTORY LIMIT
+# =========================================================
+
+MAX_HISTORY_ITEMS = 2000
+
+
+# =========================================================
+# PATTERN SETTINGS
 # =========================================================
 
 MIN_HISTORY_MATCHES = 3
@@ -116,119 +158,52 @@ MAX_PATTERN_LENGTH = 12
 
 
 # =========================================================
-# NUMBER RANGE
-# =========================================================
-
-MIN_NUMBER = 0
-
-MAX_NUMBER = 9
-
-
-# =========================================================
-# BIG / SMALL
-# =========================================================
-# 0-4 = SMALL
-# 5-9 = BIG
-
-BIG_THRESHOLD = 5
-
-
-# =========================================================
-# FORMULA FALLBACK
-# =========================================================
-
-S_FORMULA = {
-
-    1: "B",
-    2: "B",
-    3: "S",
-    4: "B",
-    5: "S",
-
-}
-
-
-B_FORMULA = {
-
-    1: "S",
-    2: "S",
-    3: "B",
-    4: "S",
-    5: "B",
-    6: "S",
-
-}
-
-
-# =========================================================
-# MEMORY
-# =========================================================
-
-PATTERN_MEMORY_FILE = (
-    "models/pattern_memory.json"
-)
-
-FORMULA_MEMORY_FILE = (
-    "models/formula_memory.json"
-)
-
-
-# =========================================================
-# PREDICTION
+# CONFIDENCE
 # =========================================================
 
 MIN_CONFIDENCE = 50.0
+
+STRONG_CONFIDENCE = 70.0
+
+
+# =========================================================
+# MEMORY SETTINGS
+# =========================================================
+
+MEMORY_MIN_SAMPLES = 3
+
+MEMORY_MAX_ENTRIES = 5000
+
+
+# =========================================================
+# LEARNING
+# =========================================================
+
+LEARNING_ENABLED = True
+
+LEARN_ONLY_VALID_RESULTS = True
 
 
 # =========================================================
 # LOGGING
 # =========================================================
 
-LOG_LEVEL = "INFO"
+LOG_LEVEL = os.getenv(
+    "LOG_LEVEL",
+    "INFO"
+)
 
 
 # =========================================================
-# VALIDATION
+# CREATE DIRECTORIES
 # =========================================================
 
-def validate_config():
+os.makedirs(
+    DATA_DIR,
+    exist_ok=True
+)
 
-    if not TELEGRAM_BOT_TOKEN:
-        raise ValueError(
-            "TELEGRAM_BOT_TOKEN is missing."
-        )
-
-    if not AUTHORIZATION_TOKEN:
-        raise ValueError(
-            "AUTHORIZATION_TOKEN is missing."
-        )
-
-    if GAME_TIME <= 0:
-        raise ValueError(
-            "GAME_TIME must be greater than 0."
-        )
-
-    if CHECK_INTERVAL <= 0:
-        raise ValueError(
-            "CHECK_INTERVAL must be greater than 0."
-        )
-
-    if MIN_NUMBER < 0:
-        raise ValueError(
-            "MIN_NUMBER is invalid."
-        )
-
-    if MAX_NUMBER > 9:
-        raise ValueError(
-            "MAX_NUMBER is invalid."
-        )
-
-    if MIN_PATTERN_LENGTH < 1:
-        raise ValueError(
-            "MIN_PATTERN_LENGTH is invalid."
-        )
-
-    if MAX_PATTERN_LENGTH < MIN_PATTERN_LENGTH:
-        raise ValueError(
-            "MAX_PATTERN_LENGTH is invalid."
-        )
+os.makedirs(
+    MODELS_DIR,
+    exist_ok=True
+)

@@ -1,20 +1,47 @@
-# config.py
+# =========================================================
+# AI-BOT CONFIG
+# =========================================================
+
+from pathlib import Path
+
+
+# =========================================================
+# PROJECT PATH
+# =========================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+
+DATA_DIR = BASE_DIR / "data"
+
+MODELS_DIR = BASE_DIR / "models"
+
+
+DATA_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+MODELS_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
 
 # =========================================================
 # TELEGRAM
 # =========================================================
 
 TELEGRAM_BOT_TOKEN = (
-    "8910093120:AAEXKCBhY18J2zZ2rDTKvImFlWiWOuhDBJQ"
+    "YOUR_TELEGRAM_BOT_TOKEN_HERE"
 )
 
 
 # =========================================================
-# API AUTH
+# GAME API AUTH
 # =========================================================
 
 AUTHORIZATION_TOKEN = (
-    "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiIzNmI0ZWNiZi1hNzMzLTQyNzctOTY5OC1iM2FmYmY5OTE1ZjAiLCJVc2VyTmFtZSI6Ijk3Nzg5MDUyMjAiLCJuYW1lIjoiTWVtYmVyUUs3WVZNUU8iLCJleHAiOjE3ODY3MjY3MTd9.uatfENIuYW4JzKAPRo5jvL-1W2Yv5M5s9sKbBHRbwhM"
+    "Bearer YOUR_JWT_TOKEN_HERE"
 )
 
 
@@ -38,47 +65,73 @@ HISTORY_API_URL = (
 # =========================================================
 
 HEADERS = {
+
     "accept": "*/*",
-    "accept-language": "en-US,en;q=0.9",
-    "authorization": AUTHORIZATION_TOKEN,
-    "content-type": "application/json",
-    "origin": "https://mini-game.site",
-    "referer": "https://mini-game.site/",
-    "user-agent": (
-        "Mozilla/5.0 "
-        "(Linux; Android 10; K) "
-        "AppleWebKit/537.36 "
-        "(KHTML, like Gecko) "
-        "Chrome/150.0.0.0 "
-        "Mobile Safari/537.36"
-    ),
+
+    "accept-language":
+        "en-US,en;q=0.9",
+
+    "authorization":
+        AUTHORIZATION_TOKEN,
+
+    "content-type":
+        "application/json",
+
+    "origin":
+        "https://mini-game.site",
+
+    "referer":
+        "https://mini-game.site/",
+
+    "user-agent":
+        (
+            "Mozilla/5.0 "
+            "(Linux; Android 10; K) "
+            "AppleWebKit/537.36 "
+            "(KHTML, like Gecko) "
+            "Chrome/150.0.0.0 "
+            "Mobile Safari/537.36"
+        ),
 }
 
 
 # =========================================================
-# API SETTINGS
+# API REQUEST
 # =========================================================
 
 REQUEST_TIMEOUT = 8
+
+CHECK_INTERVAL = 3
 
 PAGE_SIZE = 500
 
 PAGE_NUMBER = 1
 
-CHECK_INTERVAL = 3
+
+# =========================================================
+# NUMBER RULE
+# =========================================================
+
+MIN_NUMBER = 0
+
+MAX_NUMBER = 9
+
+BIG_MIN_NUMBER = 5
 
 
 # =========================================================
-# HISTORY STORAGE
+# HISTORY
 # =========================================================
 
-DATA_FILE = "data/game_history.json"
+HISTORY_FILE = (
+    DATA_DIR / "game_history.json"
+)
 
 MAX_HISTORY = 2000
 
 
 # =========================================================
-# SEARCH SETTINGS
+# SEARCH
 # =========================================================
 
 MIN_PATTERN_LENGTH = 3
@@ -89,25 +142,21 @@ MIN_HISTORY_MATCHES = 3
 
 
 # =========================================================
-# FORMULA SETTINGS
+# BACKTEST
 # =========================================================
 
-S_FORMULA = {
-    1: "B",
-    2: "B",
-    3: "S",
-    4: "B",
-    5: "S",
-}
+BACKTEST_LOOKBACK = 500
 
-B_FORMULA = {
-    1: "S",
-    2: "S",
-    3: "B",
-    4: "S",
-    5: "B",
-    6: "S",
-}
+BACKTEST_MIN_SAMPLES = 10
+
+
+# =========================================================
+# PREDICTION
+# =========================================================
+
+MIN_CONFIDENCE = 50.0
+
+HIGH_CONFIDENCE = 75.0
 
 
 # =========================================================
@@ -115,9 +164,45 @@ B_FORMULA = {
 # =========================================================
 
 PATTERN_MEMORY_FILE = (
-    "models/pattern_memory.json"
+    MODELS_DIR /
+    "pattern_memory.json"
 )
 
 FORMULA_MEMORY_FILE = (
-    "models/formula_memory.json"
+    MODELS_DIR /
+    "formula_memory.json"
+)
+
+
+# =========================================================
+# GAME DISPLAY
+# =========================================================
+
+SHOW_TIME = True
+
+SHOW_CURRENT_PERIOD = True
+
+SHOW_NET_PERIOD = True
+
+SHOW_NUMBER = True
+
+SHOW_BS = True
+
+SHOW_CONFIDENCE = True
+
+SHOW_PATTERN = True
+
+SHOW_BACKTEST = True
+
+SHOW_EVIDENCE = True
+
+
+# =========================================================
+# LOGGING
+# =========================================================
+
+LOG_LEVEL = "INFO"
+
+LOG_FILE = (
+    BASE_DIR / "bot.log"
 )

@@ -1,31 +1,7 @@
 # =========================================================
-# AI-BOT CONFIG
+# AI-BOT CONFIGURATION
+# SC 60s GAME
 # =========================================================
-
-from pathlib import Path
-
-
-# =========================================================
-# PROJECT PATH
-# =========================================================
-
-BASE_DIR = Path(__file__).resolve().parent
-
-DATA_DIR = BASE_DIR / "data"
-
-MODELS_DIR = BASE_DIR / "models"
-
-
-DATA_DIR.mkdir(
-    parents=True,
-    exist_ok=True,
-)
-
-MODELS_DIR.mkdir(
-    parents=True,
-    exist_ok=True,
-)
-
 
 # =========================================================
 # TELEGRAM
@@ -37,8 +13,9 @@ TELEGRAM_BOT_TOKEN = (
 
 
 # =========================================================
-# GAME API AUTH
+# API AUTHORIZATION
 # =========================================================
+# Supabase / Website Authorization Bearer Token
 
 AUTHORIZATION_TOKEN = (
     "Bearer YOUR_JWT_TOKEN_HERE"
@@ -46,7 +23,18 @@ AUTHORIZATION_TOKEN = (
 
 
 # =========================================================
-# GAME API
+# GAME SETTINGS
+# =========================================================
+
+# SC = Game Time
+GAME_TIME = 60
+
+# API checking interval
+CHECK_INTERVAL = 3
+
+
+# =========================================================
+# API URL
 # =========================================================
 
 ISSUE_API_URL = (
@@ -83,15 +71,14 @@ HEADERS = {
     "referer":
         "https://mini-game.site/",
 
-    "user-agent":
-        (
-            "Mozilla/5.0 "
-            "(Linux; Android 10; K) "
-            "AppleWebKit/537.36 "
-            "(KHTML, like Gecko) "
-            "Chrome/150.0.0.0 "
-            "Mobile Safari/537.36"
-        ),
+    "user-agent": (
+        "Mozilla/5.0 "
+        "(Linux; Android 10; K) "
+        "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
+        "Chrome/150.0.0.0 "
+        "Mobile Safari/537.36"
+    ),
 }
 
 
@@ -101,53 +88,89 @@ HEADERS = {
 
 REQUEST_TIMEOUT = 8
 
-CHECK_INTERVAL = 3
-
 PAGE_SIZE = 500
 
 PAGE_NUMBER = 1
 
 
 # =========================================================
-# NUMBER RULE
-# =========================================================
-
-MIN_NUMBER = 0
-
-MAX_NUMBER = 9
-
-BIG_MIN_NUMBER = 5
-
-
-# =========================================================
 # HISTORY
 # =========================================================
 
-HISTORY_FILE = (
-    DATA_DIR / "game_history.json"
+DATA_FILE = (
+    "data/game_history.json"
 )
 
 MAX_HISTORY = 2000
 
 
 # =========================================================
-# SEARCH
+# PATTERN SEARCH
 # =========================================================
+
+MIN_HISTORY_MATCHES = 3
 
 MIN_PATTERN_LENGTH = 3
 
 MAX_PATTERN_LENGTH = 12
 
-MIN_HISTORY_MATCHES = 3
+
+# =========================================================
+# NUMBER RANGE
+# =========================================================
+
+MIN_NUMBER = 0
+
+MAX_NUMBER = 9
 
 
 # =========================================================
-# BACKTEST
+# BIG / SMALL
+# =========================================================
+# 0-4 = SMALL
+# 5-9 = BIG
+
+BIG_THRESHOLD = 5
+
+
+# =========================================================
+# FORMULA FALLBACK
 # =========================================================
 
-BACKTEST_LOOKBACK = 500
+S_FORMULA = {
 
-BACKTEST_MIN_SAMPLES = 10
+    1: "B",
+    2: "B",
+    3: "S",
+    4: "B",
+    5: "S",
+
+}
+
+
+B_FORMULA = {
+
+    1: "S",
+    2: "S",
+    3: "B",
+    4: "S",
+    5: "B",
+    6: "S",
+
+}
+
+
+# =========================================================
+# MEMORY
+# =========================================================
+
+PATTERN_MEMORY_FILE = (
+    "models/pattern_memory.json"
+)
+
+FORMULA_MEMORY_FILE = (
+    "models/formula_memory.json"
+)
 
 
 # =========================================================
@@ -156,46 +179,6 @@ BACKTEST_MIN_SAMPLES = 10
 
 MIN_CONFIDENCE = 50.0
 
-HIGH_CONFIDENCE = 75.0
-
-
-# =========================================================
-# MEMORY
-# =========================================================
-
-PATTERN_MEMORY_FILE = (
-    MODELS_DIR /
-    "pattern_memory.json"
-)
-
-FORMULA_MEMORY_FILE = (
-    MODELS_DIR /
-    "formula_memory.json"
-)
-
-
-# =========================================================
-# GAME DISPLAY
-# =========================================================
-
-SHOW_TIME = True
-
-SHOW_CURRENT_PERIOD = True
-
-SHOW_NET_PERIOD = True
-
-SHOW_NUMBER = True
-
-SHOW_BS = True
-
-SHOW_CONFIDENCE = True
-
-SHOW_PATTERN = True
-
-SHOW_BACKTEST = True
-
-SHOW_EVIDENCE = True
-
 
 # =========================================================
 # LOGGING
@@ -203,6 +186,49 @@ SHOW_EVIDENCE = True
 
 LOG_LEVEL = "INFO"
 
-LOG_FILE = (
-    BASE_DIR / "bot.log"
-)
+
+# =========================================================
+# VALIDATION
+# =========================================================
+
+def validate_config():
+
+    if not TELEGRAM_BOT_TOKEN:
+        raise ValueError(
+            "TELEGRAM_BOT_TOKEN is missing."
+        )
+
+    if not AUTHORIZATION_TOKEN:
+        raise ValueError(
+            "AUTHORIZATION_TOKEN is missing."
+        )
+
+    if GAME_TIME <= 0:
+        raise ValueError(
+            "GAME_TIME must be greater than 0."
+        )
+
+    if CHECK_INTERVAL <= 0:
+        raise ValueError(
+            "CHECK_INTERVAL must be greater than 0."
+        )
+
+    if MIN_NUMBER < 0:
+        raise ValueError(
+            "MIN_NUMBER is invalid."
+        )
+
+    if MAX_NUMBER > 9:
+        raise ValueError(
+            "MAX_NUMBER is invalid."
+        )
+
+    if MIN_PATTERN_LENGTH < 1:
+        raise ValueError(
+            "MIN_PATTERN_LENGTH is invalid."
+        )
+
+    if MAX_PATTERN_LENGTH < MIN_PATTERN_LENGTH:
+        raise ValueError(
+            "MAX_PATTERN_LENGTH is invalid."
+        )

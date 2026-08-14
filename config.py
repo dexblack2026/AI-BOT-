@@ -1,18 +1,13 @@
 # =========================================================
-# AI-BOT - CONFIGURATION
+# AI-BOT - CONFIG.PY
 # =========================================================
 
 import os
 
 
 # =========================================================
-# TELEGRAM BOT
+# TELEGRAM
 # =========================================================
-
-# @BotFather မှရတဲ့ Telegram Bot Token
-#
-# VPS မှာ environment variable သုံးနိုင်ပါတယ်။
-# မထည့်ထားရင် placeholder ကို အသုံးပြုပါမယ်။
 
 TELEGRAM_BOT_TOKEN = os.getenv(
     "TELEGRAM_BOT_TOKEN",
@@ -24,15 +19,6 @@ TELEGRAM_BOT_TOKEN = os.getenv(
 # API AUTHORIZATION
 # =========================================================
 
-# မူရင်း code မှာ အသုံးပြုထားတဲ့
-# Supabase Authorization Bearer Token
-#
-# VPS environment variable:
-#
-# export AUTHORIZATION_TOKEN="Bearer YOUR_TOKEN"
-#
-# လုပ်ထားနိုင်ပါတယ်။
-
 AUTHORIZATION_TOKEN = os.getenv(
     "AUTHORIZATION_TOKEN",
     "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJVc2VySWQiOiIzNmI0ZWNiZi1hNzMzLTQyNzctOTY5OC1iM2FmYmY5OTE1ZjAiLCJVc2VyTmFtZSI6Ijk3Nzg5MDUyMjAiLCJuYW1lIjoiTWVtYmVyUUs3WVZNUU8iLCJleHAiOjE3ODY3MjY3MTd9.uatfENIuYW4JzKAPRo5jvL-1W2Yv5M5s9sKbBHRbwhM"
@@ -43,10 +29,10 @@ AUTHORIZATION_TOKEN = os.getenv(
 # GAME
 # =========================================================
 
-# SC Game Time
+# SC = 60 seconds
 GAME_SECONDS = 60
 
-# API polling interval
+# API checking interval
 CHECK_INTERVAL = 3
 
 
@@ -63,6 +49,21 @@ HISTORY_API_URL = (
     "https://qzgijlgwqxjwzlwctbke.supabase.co/"
     "functions/v1/get-game-history"
 )
+
+
+# =========================================================
+# API REQUEST
+# =========================================================
+
+API_TIMEOUT = 8
+
+PAGE_SIZE = 500
+
+# IMPORTANT:
+# api.py က PAGE_NUMBER ကို import လုပ်နေတာကြောင့်
+# ဒီ variable name ကို PAGE_NUMBER လို့ပဲထားမယ်။
+
+PAGE_NUMBER = 1
 
 
 # =========================================================
@@ -100,17 +101,6 @@ HEADERS = {
 
 
 # =========================================================
-# API REQUEST
-# =========================================================
-
-API_TIMEOUT = 8
-
-HISTORY_PAGE_SIZE = 500
-
-HISTORY_PAGE_NUMBER = 1
-
-
-# =========================================================
 # DATA
 # =========================================================
 
@@ -140,14 +130,14 @@ FORMULA_MEMORY_FILE = os.path.join(
 
 
 # =========================================================
-# HISTORY LIMIT
+# HISTORY
 # =========================================================
 
 MAX_HISTORY_ITEMS = 2000
 
 
 # =========================================================
-# PATTERN SETTINGS
+# PATTERN
 # =========================================================
 
 MIN_HISTORY_MATCHES = 3
@@ -155,6 +145,13 @@ MIN_HISTORY_MATCHES = 3
 MIN_PATTERN_LENGTH = 3
 
 MAX_PATTERN_LENGTH = 12
+
+
+# =========================================================
+# GAME RESULT
+# =========================================================
+
+BIG_THRESHOLD = 5
 
 
 # =========================================================
@@ -167,7 +164,7 @@ STRONG_CONFIDENCE = 70.0
 
 
 # =========================================================
-# MEMORY SETTINGS
+# MEMORY
 # =========================================================
 
 MEMORY_MIN_SAMPLES = 3

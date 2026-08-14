@@ -3,8 +3,7 @@
 # =========================================================
 
 import logging
-from collections import Counter
-from typing import Any, Dict, List, Optional
+from typing import Dict, Optional
 
 
 logger = logging.getLogger("LearningEngine")
@@ -12,532 +11,180 @@ logger = logging.getLogger("LearningEngine")
 
 class LearningEngine:
 
-    def __init__(
-        self,
-        min_samples: int = 5,
-    ):
+    def __init__(self, memory_engine):
 
-        self.min_samples = max(
-            1,
-            min_samples,
-        )
+        self.memory = memory_engine
 
     # =====================================================
-    # SAFE INT
+    # NORMALIZE
     # =====================================================
 
-    def safe_int(
-        self,
-        value: Any,
-    ) -> Optional[int]:
+    @staticmethod
+    def normalize(value: Optional[str]) -> Optional[str]:
 
-        try:
-            return int(value)
-        except (
-            ValueError,
-            TypeError,
-        ):
+        if value is None:
             return None
 
+        value = str(value).upper().strip()
+
+        if value in ("B", "S"):
+            return value
+
+        return None
+
     # =====================================================
-    # SAFE FLOAT
+    # LEARN FROM RESULT
     # =====================================================
 
-    def safe_float(
+    def learn(
         self,
-        value: Any,
-    ) -> float:
+        pattern: Optional[str],
+        pattern_prediction: Optional[str],
+        formula_key: Optional[str],
+        formula_prediction: Optional[str],
+        actual_result: Optional[str],
+    ) -> Dict:
 
-        try:
-            return float(value)
-        except (
-            ValueError,
-            TypeError,
-        ):
-            return 0.0
-
-    # =====================================================
-    # ANALYZE RECORDS
-    # =====================================================
-
-    def analyze(
-        self,
-        records: List[
-            Dict[str, Any]
-        ],
-    ) -> Dict[str, Any]:
-
-        total = 0
-        correct = 0
-
-        pattern_stats = {}
-        method_stats = {}
-
-        for record in records:
-
-            if not isinstance(
-                record,
-                dict,
-            ):
-                continue
-
-            actual = record.get(
-                "actual"
-            )
-
-            prediction = record.get(
-                "prediction"
-            )
-
-            # Result မရှိသေးရင်
-            # learning ထဲမထည့်
-            if (
-                actual is None
-                or prediction is None
-            ):
-                continue
-
-            actual = self.safe_int(
-                actual
-            )
-
-            prediction = self.safe_int(
-                prediction
-            )
-
-            if (
-                actual is None
-                or prediction is None
-            ):
-                continue
-
-            total += 1
-
-            is_correct = (
-                actual == prediction
-            )
-
-            if is_correct:
-                correct += 1
-
-            # -------------------------------------------------
-            # Pattern statistics
-            # -------------------------------------------------
-
-            pattern = record.get(
-                "pattern"
-            )
-
-            if pattern:
-
-                if pattern not in pattern_stats:
-
-                    pattern_stats[
-                        pattern
-                    ] = {
-                        "total": 0,
-                        "correct": 0,
-                    }
-
-                pattern_stats[
-                    pattern
-                ]["total"] += 1
-
-                if is_correct:
-
-                    pattern_stats[
-                        pattern
-                    ]["correct"] += 1
-
-            # -------------------------------------------------
-            # Method statistics
-            # -------------------------------------------------
-
-            method = record.get(
-                "method"
-            )
-
-            if method:
-
-                if method not in method_stats:
-
-                    method_stats[
-                        method
-                    ] = {
-                        "total": 0,
-                        "correct": 0,
-                    }
-
-                method_stats[
-                    method
-                ]["total"] += 1
-
-                if is_correct:
-
-                    method_stats[
-                        method
-                    ]["correct"] += 1
-
-        accuracy = (
-            correct / total * 100
-            if total
-            else 0.0
+        actual = self.normalize(
+            actual_result
         )
 
-        return {
+        pattern_prediction = self.normalize(
+            pattern_prediction
+        )
 
-            "total":
-                total,
+        formula_prediction = self.normalize(
+            formula_prediction
+        )
 
-            "correct":
-                correct,
+        if actual is None:
 
-            "wrong":
-                total - correct,
+            return {
+                "updated": False,
+                "reason": "INVALID_ACTUAL_RESULT",
+            }
 
-            "accuracy":
-                round(
-                    accuracy,
-                    2,
-                ),
-
-            "pattern_stats":
-                self._calculate_rates(
-                    pattern_stats
-                ),
-
-            "method_stats":
-                self._calculate_rates(
-                    method_stats
-                ),
+        result = {
+            "updated": True,
+            "actual": actual,
+            "pattern": None,
+            "formula": None,
         }
 
-    # =====================================================
-    # CALCULATE RATES
-    # =====================================================
+        # =================================================
+        # PATTERN MEMORY
+        # =================================================
 
-    def _calculate_rates(
-        self,
-        stats: Dict[
-            str,
-            Dict[str, int]
-        ],
-    ) -> Dict[str, Any]:
+        if pattern:
 
-        result = {}
-
-        for key, value in stats.items():
-
-            total = value.get(
-                "total",
-                0,
+            result["pattern"] = (
+                self.memory.update_pattern(
+                    pattern=pattern,
+                    prediction=pattern_prediction,
+                    actual=actual,
+                )
             )
 
-            correct = value.get(
-                "correct",
-                0,
+        # =================================================
+        # FORMULA MEMORY
+        # =================================================
+
+        if formula_key:
+
+            result["formula"] = (
+                self.memory.update_formula(
+                    rule_key=formula_key,
+                    prediction=formula_prediction,
+                    actual=actual,
+                )
             )
 
-            accuracy = (
-                correct / total * 100
-                if total
-                else 0.0
-            )
-
-            result[key] = {
-
-                "total":
-                    total,
-
-                "correct":
-                    correct,
-
-                "wrong":
-                    total - correct,
-
-                "accuracy":
-                    round(
-                        accuracy,
-                        2,
-                    ),
-            }
+        logger.info(
+            "Learning completed | actual=%s | pattern=%s | formula=%s",
+            actual,
+            pattern,
+            formula_key,
+        )
 
         return result
 
     # =====================================================
-    # BEST PATTERNS
+    # CHECK PREDICTION
     # =====================================================
 
-    def best_patterns(
-        self,
-        analysis: Dict[str, Any],
-        limit: int = 10,
-    ) -> List[
-        Dict[str, Any]
-    ]:
+    @staticmethod
+    def evaluate(
+        prediction: Optional[str],
+        actual: Optional[str],
+    ) -> Dict:
 
-        pattern_stats = analysis.get(
-            "pattern_stats",
-            {},
+        prediction = (
+            str(prediction).upper()
+            if prediction
+            else None
         )
 
-        candidates = []
-
-        for pattern, stats in pattern_stats.items():
-
-            total = stats.get(
-                "total",
-                0,
-            )
-
-            accuracy = self.safe_float(
-                stats.get(
-                    "accuracy",
-                    0,
-                )
-            )
-
-            if total < self.min_samples:
-                continue
-
-            candidates.append({
-
-                "pattern":
-                    pattern,
-
-                "total":
-                    total,
-
-                "correct":
-                    stats.get(
-                        "correct",
-                        0,
-                    ),
-
-                "accuracy":
-                    accuracy,
-            })
-
-        candidates.sort(
-            key=lambda item: (
-                item["accuracy"],
-                item["total"],
-            ),
-            reverse=True,
+        actual = (
+            str(actual).upper()
+            if actual
+            else None
         )
 
-        return candidates[:limit]
+        if prediction not in ("B", "S"):
 
-    # =====================================================
-    # BEST METHODS
-    # =====================================================
+            return {
+                "valid": False,
+                "correct": False,
+                "status": "NO_PREDICTION",
+            }
 
-    def best_methods(
-        self,
-        analysis: Dict[str, Any],
-    ) -> List[
-        Dict[str, Any]
-    ]:
+        if actual not in ("B", "S"):
 
-        method_stats = analysis.get(
-            "method_stats",
-            {},
-        )
+            return {
+                "valid": False,
+                "correct": False,
+                "status": "INVALID_RESULT",
+            }
 
-        candidates = []
-
-        for method, stats in method_stats.items():
-
-            total = stats.get(
-                "total",
-                0,
-            )
-
-            accuracy = self.safe_float(
-                stats.get(
-                    "accuracy",
-                    0,
-                )
-            )
-
-            if total < self.min_samples:
-                continue
-
-            candidates.append({
-
-                "method":
-                    method,
-
-                "total":
-                    total,
-
-                "correct":
-                    stats.get(
-                        "correct",
-                        0,
-                    ),
-
-                "accuracy":
-                    accuracy,
-            })
-
-        candidates.sort(
-            key=lambda item: (
-                item["accuracy"],
-                item["total"],
-            ),
-            reverse=True,
-        )
-
-        return candidates
-
-    # =====================================================
-    # LEARNING SUMMARY
-    # =====================================================
-
-    def summary(
-        self,
-        records: List[
-            Dict[str, Any]
-        ],
-    ) -> Dict[str, Any]:
-
-        analysis = self.analyze(
-            records
-        )
-
-        best_patterns = (
-            self.best_patterns(
-                analysis
-            )
-        )
-
-        best_methods = (
-            self.best_methods(
-                analysis
-            )
+        correct = (
+            prediction == actual
         )
 
         return {
-
-            "overall":
-                {
-                    "total":
-                        analysis[
-                            "total"
-                        ],
-
-                    "correct":
-                        analysis[
-                            "correct"
-                        ],
-
-                    "wrong":
-                        analysis[
-                            "wrong"
-                        ],
-
-                    "accuracy":
-                        analysis[
-                            "accuracy"
-                        ],
-                },
-
-            "best_patterns":
-                best_patterns,
-
-            "best_methods":
-                best_methods,
+            "valid": True,
+            "correct": correct,
+            "status": (
+                "WIN"
+                if correct
+                else "LOSS"
+            ),
+            "prediction": prediction,
+            "actual": actual,
         }
 
     # =====================================================
-    # RECOMMENDATION
+    # GET MEMORY STATUS
     # =====================================================
 
-    def recommendation(
-        self,
-        records: List[
-            Dict[str, Any]
-        ],
-    ) -> Dict[str, Any]:
+    def status(self) -> Dict:
 
-        summary = self.summary(
-            records
-        )
+        try:
 
-        overall = summary[
-            "overall"
-        ]
-
-        accuracy = self.safe_float(
-            overall.get(
-                "accuracy",
-                0,
-            )
-        )
-
-        # -------------------------------------------------
-        # Learning state
-        # -------------------------------------------------
-
-        if overall["total"] < self.min_samples:
-
-            status = "INSUFFICIENT_DATA"
-
-        elif accuracy >= 70:
-
-            status = "STRONG"
-
-        elif accuracy >= 55:
-
-            status = "MODERATE"
-
-        else:
-
-            status = "WEAK"
-
-        best_method = None
-
-        if summary[
-            "best_methods"
-        ]:
-
-            best_method = (
-                summary[
-                    "best_methods"
-                ][0]
+            return (
+                self.memory.get_statistics()
             )
 
-        return {
+        except Exception as error:
 
-            "status":
-                status,
+            logger.error(
+                "Unable to read memory status: %s",
+                error,
+            )
 
-            "accuracy":
-                accuracy,
+            return {
 
-            "best_method":
-                best_method,
+                "pattern": {},
 
-            "best_patterns":
-                summary[
-                    "best_patterns"
-                ],
-        }
+                "formula": {},
 
-
-# =========================================================
-# HELPER
-# =========================================================
-
-def learn(
-    records: List[
-        Dict[str, Any]
-    ],
-) -> Dict[str, Any]:
-
-    engine = LearningEngine()
-
-    return engine.recommendation(
-        records
-    )
+            }

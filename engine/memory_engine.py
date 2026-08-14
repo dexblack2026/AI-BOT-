@@ -1,217 +1,437 @@
-import json
-from pathlib import Path
-from typing import Any, Dict, List
+# =========================================================
+# AI-BOT - MEMORY ENGINE
+# =========================================================
 
-from config import Config
+import json
+import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+logger = logging.getLogger("MemoryEngine")
 
 
 class MemoryEngine:
 
     def __init__(
         self,
-        file_path=None
+        pattern_file: str = "models/pattern_memory.json",
+        formula_file: str = "models/formula_memory.json",
+        max_records: int = 5000,
     ):
-        self.file_path = Path(
-            file_path or Config.HISTORY_FILE
+
+        self.pattern_file = Path(
+            pattern_file
         )
 
-        self.data = self._load()
+        self.formula_file = Path(
+            formula_file
+        )
 
-    def _default_data(self):
-        return {
-            "games": [],
-            "predictions": [],
-            "stats": {
-                "total": 0,
-                "wins": 0,
-                "losses": 0,
-            },
-        }
+        self.max_records = max(
+            100,
+            max_records,
+        )
 
-    def _load(self) -> Dict[str, Any]:
+        self.pattern_file.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
-        if not self.file_path.exists():
-            return self._default_data()
+        self.formula_file.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        self._ensure_file(
+            self.pattern_file
+        )
+
+        self._ensure_file(
+            self.formula_file
+        )
+
+    # =====================================================
+    # FILE
+    # =====================================================
+
+    def _ensure_file(
+        self,
+        path: Path,
+    ) -> None:
+
+        if path.exists():
+            return
 
         try:
-            with open(
-                self.file_path,
-                "r",
-                encoding="utf-8"
-            ) as file:
 
-                data = json.load(file)
-
-            if not isinstance(data, dict):
-                return self._default_data()
-
-            return data
-
-        except (
-            json.JSONDecodeError,
-            OSError
-        ):
-            return self._default_data()
-
-    def save(self):
-
-        self.file_path.parent.mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        with open(
-            self.file_path,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                self.data,
-                file,
-                ensure_ascii=False,
-                indent=2
+            path.write_text(
+                "[]",
+                encoding="utf-8",
             )
 
-    def add_game(
+        except OSError as error:
+
+            logger.error(
+                "Cannot create %s: %s",
+                path,
+                error,
+            )
+
+    # =====================================================
+    # LOAD
+    # =====================================================
+
+    def _load(
         self,
-        game: Dict[str, Any]
-    ):
+        path: Path,
+    ) -> List[Dict[str, Any]]:
 
-        games = self.data.setdefault(
-            "games",
-            []
-        )
+        try:
 
-        games.append(game)
+            if not path.exists():
+                return []
 
-        max_history = Config.MAX_HISTORY
+            text = path.read_text(
+                encoding="utf-8"
+            ).strip()
 
-        if len(games) > max_history:
-            del games[:-max_history]
+            if not text:
+                return []
 
-        self.save()
+            data = json.loads(
+                text
+            )
 
-    def add_prediction(
+            if not isinstance(
+                data,
+                list,
+            ):
+
+                return []
+
+            return [
+                item
+                for item in data
+                if isinstance(
+                    item,
+                    dict,
+                )
+            ]
+
+        except (
+            OSError,
+            json.JSONDecodeError,
+        ) as error:
+
+            logger.error(
+                "Memory load error: %s",
+                error,
+            )
+
+            return []
+
+    # =====================================================
+    # SAVE
+    # =====================================================
+
+    def _save(
         self,
-        prediction: Dict[str, Any]
-    ):
-
-        predictions = self.data.setdefault(
-            "predictions",
-            []
-        )
-
-        predictions.append(prediction)
-
-        if len(predictions) > Config.MAX_HISTORY:
-            del predictions[:-Config.MAX_HISTORY]
-
-        self.save()
-
-    def update_result(
-        self,
-        prediction: str,
-        actual: str
+        path: Path,
+        records: List[
+            Dict[str, Any]
+        ],
     ) -> bool:
 
-        predictions = self.data.setdefault(
-            "predictions",
-            []
-        )
+        try:
 
-        matched = None
+            records = records[
+                -self.max_records:
+            ]
 
-        for item in reversed(predictions):
+            path.write_text(
+                json.dumps(
+                    records,
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
 
-            if (
-                item.get("result")
-                is None
-            ):
-                matched = item
-                break
+            return True
 
-        if matched is None:
+        except OSError as error:
+
+            logger.error(
+                "Memory save error: %s",
+                error,
+            )
+
             return False
 
-        matched["actual"] = actual
+    # =====================================================
+    # PATTERN MEMORY
+    # =====================================================
 
-        is_win = (
-            str(prediction).lower()
-            == str(actual).lower()
-        )
-
-        matched["result"] = (
-            "win" if is_win else "loss"
-        )
-
-        stats = self.data.setdefault(
-            "stats",
-            {
-                "total": 0,
-                "wins": 0,
-                "losses": 0,
-            }
-        )
-
-        stats["total"] += 1
-
-        if is_win:
-            stats["wins"] += 1
-        else:
-            stats["losses"] += 1
-
-        self.save()
-
-        return is_win
-
-    def get_games(
+    def load_patterns(
         self,
-        limit: int = 100
     ) -> List[Dict[str, Any]]:
 
-        return self.data.get(
-            "games",
-            []
-        )[-limit:]
+        return self._load(
+            self.pattern_file
+        )
 
-    def get_predictions(
+    def save_pattern(
         self,
-        limit: int = 100
+        record: Dict[str, Any],
+    ) -> bool:
+
+        records = self.load_patterns()
+
+        records.append(
+            record
+        )
+
+        return self._save(
+            self.pattern_file,
+            records,
+        )
+
+    # =====================================================
+    # FORMULA MEMORY
+    # =====================================================
+
+    def load_formulas(
+        self,
     ) -> List[Dict[str, Any]]:
 
-        return self.data.get(
-            "predictions",
-            []
-        )[-limit:]
-
-    def get_stats(self) -> Dict[str, Any]:
-
-        stats = self.data.get(
-            "stats",
-            {}
+        return self._load(
+            self.formula_file
         )
 
-        total = stats.get(
-            "total",
-            0
+    def save_formula(
+        self,
+        record: Dict[str, Any],
+    ) -> bool:
+
+        records = self.load_formulas()
+
+        records.append(
+            record
         )
 
-        wins = stats.get(
-            "wins",
-            0
+        return self._save(
+            self.formula_file,
+            records,
         )
 
-        win_rate = (
-            (wins / total) * 100
-            if total > 0
-            else 0
+    # =====================================================
+    # RECORD PREDICTION
+    # =====================================================
+
+    def record_prediction(
+        self,
+        *,
+        period: str,
+        prediction: int,
+        actual: Optional[int] = None,
+        pattern: Optional[str] = None,
+        confidence: float = 0.0,
+        evidence: float = 0.0,
+    ) -> bool:
+
+        correct = None
+
+        if actual is not None:
+
+            correct = (
+                int(prediction)
+                == int(actual)
+            )
+
+        record = {
+
+            "period":
+                str(period),
+
+            "prediction":
+                int(prediction),
+
+            "actual":
+                (
+                    int(actual)
+                    if actual is not None
+                    else None
+                ),
+
+            "correct":
+                correct,
+
+            "pattern":
+                pattern,
+
+            "confidence":
+                round(
+                    float(confidence),
+                    2,
+                ),
+
+            "evidence":
+                round(
+                    float(evidence),
+                    2,
+                ),
+        }
+
+        return self.save_pattern(
+            record
+        )
+
+    # =====================================================
+    # PATTERN STATISTICS
+    # =====================================================
+
+    def pattern_statistics(
+        self,
+    ) -> Dict[str, Any]:
+
+        records = self.load_patterns()
+
+        total = 0
+        correct = 0
+
+        for record in records:
+
+            actual = record.get(
+                "actual"
+            )
+
+            result = record.get(
+                "correct"
+            )
+
+            if actual is None:
+                continue
+
+            total += 1
+
+            if result is True:
+                correct += 1
+
+        accuracy = (
+            correct / total * 100
+            if total
+            else 0.0
         )
 
         return {
-            **stats,
-            "win_rate": round(
-                win_rate,
-                2
-            ),
+
+            "total":
+                total,
+
+            "correct":
+                correct,
+
+            "wrong":
+                total - correct,
+
+            "accuracy":
+                round(
+                    accuracy,
+                    2,
+                ),
         }
+
+    # =====================================================
+    # FORMULA STATISTICS
+    # =====================================================
+
+    def formula_statistics(
+        self,
+    ) -> Dict[str, Any]:
+
+        records = self.load_formulas()
+
+        total = 0
+        correct = 0
+
+        for record in records:
+
+            actual = record.get(
+                "actual"
+            )
+
+            if actual is None:
+                continue
+
+            total += 1
+
+            if record.get(
+                "correct"
+            ) is True:
+
+                correct += 1
+
+        accuracy = (
+            correct / total * 100
+            if total
+            else 0.0
+        )
+
+        return {
+
+            "total":
+                total,
+
+            "correct":
+                correct,
+
+            "wrong":
+                total - correct,
+
+            "accuracy":
+                round(
+                    accuracy,
+                    2,
+                ),
+        }
+
+    # =====================================================
+    # RECENT MEMORY
+    # =====================================================
+
+    def recent_patterns(
+        self,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+
+        records = self.load_patterns()
+
+        return records[-limit:]
+
+    def recent_formulas(
+        self,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+
+        records = self.load_formulas()
+
+        return records[-limit:]
+
+    # =====================================================
+    # CLEAR
+    # =====================================================
+
+    def clear_patterns(self) -> bool:
+
+        return self._save(
+            self.pattern_file,
+            [],
+        )
+
+    def clear_formulas(self) -> bool:
+
+        return self._save(
+            self.formula_file,
+            [],
+        )

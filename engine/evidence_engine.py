@@ -1,138 +1,341 @@
-from typing import Any, Dict, List
+# =========================================================
+# AI-BOT - EVIDENCE ENGINE
+# =========================================================
+
+from typing import Any, Dict, Optional
 
 
 class EvidenceEngine:
-    """
-    Collects and evaluates evidence from different engines.
 
-    Evidence sources:
-    - Pattern
-    - Formula
-    - Backtest
-    - Historical trend
-    """
-
-    def __init__(self):
-        self.sources: List[Dict[str, Any]] = []
-
-    def add(
+    def __init__(
         self,
-        source: str,
-        prediction: str,
-        confidence: float,
-        reason: str = ""
+        pattern_weight: float = 0.30,
+        formula_weight: float = 0.25,
+        backtest_weight: float = 0.25,
+        history_weight: float = 0.20,
     ):
-        evidence = {
-            "source": source,
-            "prediction": prediction,
-            "confidence": float(confidence),
-            "reason": reason,
-        }
 
-        self.sources.append(evidence)
+        self.pattern_weight = pattern_weight
+        self.formula_weight = formula_weight
+        self.backtest_weight = backtest_weight
+        self.history_weight = history_weight
 
-    def clear(self):
-        self.sources.clear()
+    # =====================================================
+    # SAFE VALUE
+    # =====================================================
 
-    def collect(
+    def safe_float(
         self,
-        pattern_result: Dict[str, Any] | None = None,
-        formula_result: Dict[str, Any] | None = None,
-        backtest_result: Dict[str, Any] | None = None,
-    ) -> List[Dict[str, Any]]:
+        value: Any,
+    ) -> float:
 
-        self.clear()
+        try:
+            return float(value)
+        except (
+            ValueError,
+            TypeError,
+        ):
+            return 0.0
 
-        results = [
-            ("pattern", pattern_result),
-            ("formula", formula_result),
-            ("backtest", backtest_result),
-        ]
+    # =====================================================
+    # PATTERN SCORE
+    # =====================================================
 
-        for source, result in results:
+    def pattern_score(
+        self,
+        pattern: Optional[Dict[str, Any]],
+    ) -> float:
 
-            if not isinstance(result, dict):
-                continue
+        if not pattern:
+            return 0.0
 
-            prediction = result.get("prediction")
+        strength = self.safe_float(
+            pattern.get(
+                "strength",
+                0,
+            )
+        )
 
-            if prediction is None:
-                prediction = result.get("pred")
+        rate = self.safe_float(
+            pattern.get(
+                "number_rate",
+                0,
+            )
+        )
 
-            confidence = result.get(
+        matches = self.safe_float(
+            pattern.get(
+                "match_count",
+                0,
+            )
+        )
+
+        # Pattern strength
+        score = (
+            strength * 0.60
+            + rate * 0.30
+            + min(
+                matches * 2,
+                10,
+            )
+        )
+
+        return min(
+            100.0,
+            round(
+                score,
+                2,
+            ),
+        )
+
+    # =====================================================
+    # FORMULA SCORE
+    # =====================================================
+
+    def formula_score(
+        self,
+        formula: Optional[Dict[str, Any]],
+    ) -> float:
+
+        if not formula:
+            return 0.0
+
+        confidence = self.safe_float(
+            formula.get(
                 "confidence",
-                result.get("conf", 0)
+                0,
             )
-
-            reason = result.get(
-                "reason",
-                result.get("name", "")
-            )
-
-            if prediction:
-                self.add(
-                    source=source,
-                    prediction=str(prediction),
-                    confidence=float(confidence),
-                    reason=str(reason)
-                )
-
-        return self.sources
-
-    def summarize(self) -> Dict[str, Any]:
-
-        if not self.sources:
-            return {
-                "prediction": None,
-                "confidence": 0,
-                "agreement": 0,
-                "evidence": [],
-            }
-
-        scores: Dict[str, float] = {}
-        counts: Dict[str, int] = {}
-
-        for item in self.sources:
-
-            prediction = item["prediction"]
-            confidence = item["confidence"]
-
-            scores[prediction] = (
-                scores.get(prediction, 0)
-                + confidence
-            )
-
-            counts[prediction] = (
-                counts.get(prediction, 0)
-                + 1
-            )
-
-        best_prediction = max(
-            scores,
-            key=scores.get
         )
 
-        total_sources = len(self.sources)
-
-        agreement = (
-            counts[best_prediction]
-            / total_sources
-        ) * 100
-
-        confidence = (
-            scores[best_prediction]
-            / counts[best_prediction]
+        return min(
+            100.0,
+            round(
+                confidence,
+                2,
+            ),
         )
+
+    # =====================================================
+    # BACKTEST SCORE
+    # =====================================================
+
+    def backtest_score(
+        self,
+        backtest: Optional[
+            Dict[str, Any]
+        ],
+    ) -> float:
+
+        if not backtest:
+            return 0.0
+
+        combined = backtest.get(
+            "combined",
+            {},
+        )
+
+        accuracy = self.safe_float(
+            combined.get(
+                "accuracy",
+                0,
+            )
+        )
+
+        return min(
+            100.0,
+            round(
+                accuracy,
+                2,
+            ),
+        )
+
+    # =====================================================
+    # HISTORY SCORE
+    # =====================================================
+
+    def history_score(
+        self,
+        history_count: int,
+    ) -> float:
+
+        try:
+            count = int(
+                history_count
+            )
+        except (
+            ValueError,
+            TypeError,
+        ):
+            count = 0
+
+        # More historical data gives
+        # more stable evidence.
+        if count >= 1000:
+            return 100.0
+
+        if count >= 500:
+            return 90.0
+
+        if count >= 200:
+            return 80.0
+
+        if count >= 100:
+            return 70.0
+
+        if count >= 50:
+            return 60.0
+
+        if count >= 20:
+            return 50.0
+
+        if count >= 10:
+            return 40.0
+
+        return 20.0
+
+    # =====================================================
+    # FINAL EVIDENCE
+    # =====================================================
+
+    def calculate(
+        self,
+        pattern: Optional[
+            Dict[str, Any]
+        ],
+        formula: Optional[
+            Dict[str, Any]
+        ],
+        backtest: Optional[
+            Dict[str, Any]
+        ],
+        history_count: int,
+    ) -> Dict[str, Any]:
+
+        pattern_score = (
+            self.pattern_score(
+                pattern
+            )
+        )
+
+        formula_score = (
+            self.formula_score(
+                formula
+            )
+        )
+
+        backtest_score = (
+            self.backtest_score(
+                backtest
+            )
+        )
+
+        history_score = (
+            self.history_score(
+                history_count
+            )
+        )
+
+        final_score = (
+
+            pattern_score
+            * self.pattern_weight
+
+            + formula_score
+            * self.formula_weight
+
+            + backtest_score
+            * self.backtest_weight
+
+            + history_score
+            * self.history_weight
+        )
+
+        final_score = min(
+            100.0,
+            max(
+                0.0,
+                final_score,
+            ),
+        )
+
+        # -------------------------------------------------
+        # Evidence level
+        # -------------------------------------------------
+
+        if final_score >= 80:
+            level = "VERY_STRONG"
+
+        elif final_score >= 70:
+            level = "STRONG"
+
+        elif final_score >= 60:
+            level = "MEDIUM"
+
+        elif final_score >= 50:
+            level = "WEAK"
+
+        else:
+            level = "LOW"
 
         return {
-            "prediction": best_prediction,
-            "confidence": round(
-                min(confidence, 100),
-                2
-            ),
-            "agreement": round(
-                agreement,
-                2
-            ),
-            "evidence": self.sources,
+
+            "pattern_score":
+                round(
+                    pattern_score,
+                    2,
+                ),
+
+            "formula_score":
+                round(
+                    formula_score,
+                    2,
+                ),
+
+            "backtest_score":
+                round(
+                    backtest_score,
+                    2,
+                ),
+
+            "history_score":
+                round(
+                    history_score,
+                    2,
+                ),
+
+            "evidence_score":
+                round(
+                    final_score,
+                    2,
+                ),
+
+            "level":
+                level,
         }
+
+
+# =========================================================
+# HELPER
+# =========================================================
+
+def calculate_evidence(
+    pattern: Optional[
+        Dict[str, Any]
+    ],
+    formula: Optional[
+        Dict[str, Any]
+    ],
+    backtest: Optional[
+        Dict[str, Any]
+    ],
+    history_count: int,
+) -> Dict[str, Any]:
+
+    engine = EvidenceEngine()
+
+    return engine.calculate(
+        pattern=pattern,
+        formula=formula,
+        backtest=backtest,
+        history_count=history_count,
+    )

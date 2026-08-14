@@ -2,409 +2,421 @@
 # AI-BOT - FORMULA ENGINE
 # =========================================================
 
-from collections import Counter
-from typing import Any, Dict, List, Optional
+import logging
+from typing import Dict, List, Optional
+
+from config import (
+    S_FORMULA,
+    B_FORMULA,
+)
+
+logger = logging.getLogger("FormulaEngine")
 
 
 class FormulaEngine:
 
-    def __init__(self):
-        pass
-
     # =====================================================
-    # NORMALIZE
+    # INIT
     # =====================================================
 
-    def normalize(
+    def __init__(
         self,
-        history: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+        s_formula: Optional[Dict[int, str]] = None,
+        b_formula: Optional[Dict[int, str]] = None,
+    ):
+
+        self.s_formula = (
+            s_formula
+            if s_formula is not None
+            else S_FORMULA
+        )
+
+        self.b_formula = (
+            b_formula
+            if b_formula is not None
+            else B_FORMULA
+        )
+
+    # =====================================================
+    # GET B/S SEQUENCE
+    # =====================================================
+
+    @staticmethod
+    def get_bs_sequence(
+        history: List[Dict],
+    ) -> List[str]:
 
         result = []
 
         for item in history:
 
-            if not isinstance(item, dict):
-                continue
+            bs = str(
+                item.get("bs", "")
+            ).upper()
 
-            number = item.get("number")
-
-            if number is None:
-                continue
-
-            try:
-                number = int(number)
-            except (ValueError, TypeError):
-                continue
-
-            if number < 0 or number > 9:
-                continue
-
-            bs = item.get("bs")
-
-            if bs not in ("B", "S"):
-                bs = "B" if number >= 5 else "S"
-
-            result.append({
-                "period": str(
-                    item.get("period", "")
-                ),
-                "number": number,
-                "bs": bs,
-                "time": item.get("time"),
-            })
+            if bs in ("B", "S"):
+                result.append(bs)
 
         return result
 
     # =====================================================
-    # NUMBER FREQUENCY
+    # CURRENT RUN
     # =====================================================
 
-    def number_frequency(
+    @staticmethod
+    def get_current_run(
+        sequence: List[str],
+    ) -> Dict:
+
+        if not sequence:
+
+            return {
+                "type": None,
+                "length": 0,
+                "pattern": "",
+            }
+
+        last = sequence[-1]
+
+        count = 0
+
+        for value in reversed(sequence):
+
+            if value == last:
+                count += 1
+            else:
+                break
+
+        return {
+            "type": last,
+            "length": count,
+            "pattern": last * count,
+        }
+
+    # =====================================================
+    # FORMULA LOOKUP
+    # =====================================================
+
+    def get_formula_prediction(
         self,
-        history: List[Dict[str, Any]],
-    ) -> Dict[int, int]:
+        run_type: Optional[str],
+        run_length: int,
+    ) -> Optional[str]:
 
-        counter = Counter()
+        if not run_type:
+            return None
 
-        for item in history:
+        if run_length <= 0:
+            return None
 
-            number = item.get("number")
+        run_type = run_type.upper()
 
-            if number is not None:
-                counter[int(number)] += 1
+        if run_type == "S":
 
-        return dict(counter)
+            return self.s_formula.get(
+                run_length
+            )
 
-    # =====================================================
-    # RECENT NUMBERS
-    # =====================================================
+        if run_type == "B":
 
-    def recent_numbers(
-        self,
-        history: List[Dict[str, Any]],
-        limit: int = 20,
-    ) -> List[int]:
+            return self.b_formula.get(
+                run_length
+            )
 
-        history = self.normalize(history)
-
-        return [
-            item["number"]
-            for item in history[-limit:]
-        ]
+        return None
 
     # =====================================================
-    # COLD NUMBERS
+    # FORMULA KEY
     # =====================================================
 
-    def cold_numbers(
-        self,
-        history: List[Dict[str, Any]],
-    ) -> List[int]:
-
-        frequency = self.number_frequency(
-            history
-        )
-
-        numbers = list(range(10))
-
-        return sorted(
-            numbers,
-            key=lambda number: frequency.get(
-                number,
-                0,
-            ),
-        )
-
-    # =====================================================
-    # HOT NUMBERS
-    # =====================================================
-
-    def hot_numbers(
-        self,
-        history: List[Dict[str, Any]],
-    ) -> List[int]:
-
-        frequency = self.number_frequency(
-            history
-        )
-
-        numbers = list(range(10))
-
-        return sorted(
-            numbers,
-            key=lambda number: frequency.get(
-                number,
-                0,
-            ),
-            reverse=True,
-        )
-
-    # =====================================================
-    # RECENT BS
-    # =====================================================
-
-    def recent_bs(
-        self,
-        history: List[Dict[str, Any]],
-        limit: int = 10,
+    @staticmethod
+    def make_rule_key(
+        run_type: Optional[str],
+        run_length: int,
     ) -> str:
 
-        history = self.normalize(history)
+        if not run_type:
+            return "UNKNOWN_0"
 
-        return "".join(
-            item["bs"]
-            for item in history[-limit:]
+        return (
+            f"{run_type.upper()}_{run_length}"
         )
 
     # =====================================================
-    # BS COUNTS
+    # ANALYZE
     # =====================================================
 
-    def bs_counts(
+    def analyze(
         self,
-        history: List[Dict[str, Any]],
-    ) -> Dict[str, int]:
+        history: List[Dict],
+    ) -> Dict:
 
-        counter = Counter()
-
-        for item in history:
-
-            bs = item.get("bs")
-
-            if bs in ("B", "S"):
-                counter[bs] += 1
-
-        return {
-            "B": counter.get("B", 0),
-            "S": counter.get("S", 0),
-        }
-
-    # =====================================================
-    # ODD / EVEN
-    # =====================================================
-
-    def odd_even_counts(
-        self,
-        history: List[Dict[str, Any]],
-    ) -> Dict[str, int]:
-
-        odd = 0
-        even = 0
-
-        for item in history:
-
-            number = item.get("number")
-
-            if number is None:
-                continue
-
-            if int(number) % 2 == 0:
-                even += 1
-            else:
-                odd += 1
-
-        return {
-            "odd": odd,
-            "even": even,
-        }
-
-    # =====================================================
-    # SIMPLE FORMULA
-    # =====================================================
-
-    def calculate(
-        self,
-        history: List[Dict[str, Any]],
-    ) -> Optional[Dict[str, Any]]:
-
-        history = self.normalize(history)
-
-        if not history:
-            return None
-
-        recent = self.recent_numbers(
-            history,
-            limit=10,
-        )
-
-        if not recent:
-            return None
-
-        frequency = self.number_frequency(
+        sequence = self.get_bs_sequence(
             history
         )
 
-        bs = self.bs_counts(
-            history
+        current_run = self.get_current_run(
+            sequence
         )
 
-        odd_even = self.odd_even_counts(
-            history
-        )
+        run_type = current_run[
+            "type"
+        ]
 
-        # -------------------------------------------------
-        # Weighted score
-        # -------------------------------------------------
+        run_length = current_run[
+            "length"
+        ]
 
-        scores = {
-            number: 0.0
-            for number in range(10)
-        }
-
-        # Historical frequency
-        max_frequency = max(
-            frequency.values()
-        ) if frequency else 1
-
-        for number in range(10):
-
-            freq = frequency.get(
-                number,
-                0,
+        prediction = (
+            self.get_formula_prediction(
+                run_type,
+                run_length,
             )
-
-            scores[number] += (
-                freq
-                / max_frequency
-                * 30
-            )
-
-        # Recent activity
-        recent_counter = Counter(
-            recent
         )
 
-        max_recent = max(
-            recent_counter.values()
-        ) if recent_counter else 1
-
-        for number in range(10):
-
-            recent_count = (
-                recent_counter.get(
-                    number,
-                    0,
-                )
-            )
-
-            scores[number] += (
-                recent_count
-                / max_recent
-                * 40
-            )
-
-        # -------------------------------------------------
-        # Small recency adjustment
-        # -------------------------------------------------
-
-        if recent:
-
-            last_number = recent[-1]
-
-            # Avoid simply repeating the
-            # immediately previous number.
-            scores[last_number] -= 5
-
-        # -------------------------------------------------
-        # Best number
-        # -------------------------------------------------
-
-        prediction = max(
-            scores,
-            key=scores.get,
+        rule_key = self.make_rule_key(
+            run_type,
+            run_length,
         )
 
-        sorted_scores = sorted(
-            scores.items(),
-            key=lambda item: item[1],
-            reverse=True,
-        )
+        available = prediction is not None
 
-        best_score = sorted_scores[0][1]
+        result = {
 
-        second_score = (
-            sorted_scores[1][1]
-            if len(sorted_scores) > 1
-            else 0
-        )
+            "available":
+                available,
 
-        # -------------------------------------------------
-        # Confidence
-        # -------------------------------------------------
+            "run_type":
+                run_type,
 
-        difference = (
-            best_score
-            - second_score
-        )
+            "run_length":
+                run_length,
 
-        confidence = min(
-            95.0,
-            50.0 + difference * 3,
-        )
+            "run_pattern":
+                current_run["pattern"],
 
-        confidence = round(
-            confidence,
-            2,
-        )
-
-        prediction_bs = (
-            "B"
-            if prediction >= 5
-            else "S"
-        )
-
-        return {
+            "rule_key":
+                rule_key,
 
             "prediction":
                 prediction,
 
-            "bs":
-                prediction_bs,
+            "sequence_length":
+                len(sequence),
 
-            "confidence":
-                confidence,
-
-            "scores":
-                {
-                    str(number):
-                        round(
-                            score,
-                            2,
-                        )
-                    for number, score
-                    in scores.items()
-                },
-
-            "recent_numbers":
-                recent,
-
-            "recent_bs":
-                self.recent_bs(
-                    history
-                ),
-
-            "number_frequency":
-                frequency,
-
-            "bs_counts":
-                bs,
-
-            "odd_even":
-                odd_even,
         }
 
+        logger.info(
+            "Formula analysis | "
+            "run=%s | prediction=%s",
+            current_run["pattern"],
+            prediction,
+        )
 
-# =========================================================
-# HELPER
-# =========================================================
+        return result
 
-def calculate_formula(
-    history: List[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
+    # =====================================================
+    # TEST FORMULA AGAINST HISTORY
+    # =====================================================
 
-    engine = FormulaEngine()
+    def backtest_rule(
+        self,
+        history: List[Dict],
+    ) -> List[Dict]:
 
-    return engine.calculate(
-        history
-    )
+        sequence = self.get_bs_sequence(
+            history
+        )
+
+        results = []
+
+        # Need enough previous data
+        if len(sequence) < 2:
+            return results
+
+        for index in range(
+            1,
+            len(sequence),
+        ):
+
+            past = sequence[:index]
+
+            current_run = (
+                self.get_current_run(
+                    past
+                )
+            )
+
+            run_type = current_run[
+                "type"
+            ]
+
+            run_length = current_run[
+                "length"
+            ]
+
+            prediction = (
+                self.get_formula_prediction(
+                    run_type,
+                    run_length,
+                )
+            )
+
+            actual = sequence[index]
+
+            rule_key = (
+                self.make_rule_key(
+                    run_type,
+                    run_length,
+                )
+            )
+
+            if prediction is None:
+                continue
+
+            results.append({
+
+                "index":
+                    index,
+
+                "rule_key":
+                    rule_key,
+
+                "run_pattern":
+                    current_run[
+                        "pattern"
+                    ],
+
+                "prediction":
+                    prediction,
+
+                "actual":
+                    actual,
+
+                "correct":
+                    prediction == actual,
+
+            })
+
+        return results
+
+    # =====================================================
+    # RULE STATISTICS
+    # =====================================================
+
+    def calculate_rule_stats(
+        self,
+        history: List[Dict],
+    ) -> Dict[str, Dict]:
+
+        backtest = self.backtest_rule(
+            history
+        )
+
+        stats = {}
+
+        for item in backtest:
+
+            key = item[
+                "rule_key"
+            ]
+
+            if key not in stats:
+
+                stats[key] = {
+
+                    "samples": 0,
+
+                    "correct": 0,
+
+                    "wrong": 0,
+
+                    "accuracy": 0.0,
+
+                }
+
+            stats[key][
+                "samples"
+            ] += 1
+
+            if item["correct"]:
+
+                stats[key][
+                    "correct"
+                ] += 1
+
+            else:
+
+                stats[key][
+                    "wrong"
+                ] += 1
+
+        # Calculate accuracy
+        for key, value in stats.items():
+
+            samples = value[
+                "samples"
+            ]
+
+            correct = value[
+                "correct"
+            ]
+
+            if samples > 0:
+
+                value[
+                    "accuracy"
+                ] = round(
+                    correct
+                    / samples
+                    * 100.0,
+                    2,
+                )
+
+        return stats
+
+    # =====================================================
+    # COMPLETE RESULT
+    # =====================================================
+
+    def evaluate(
+        self,
+        history: List[Dict],
+    ) -> Dict:
+
+        analysis = self.analyze(
+            history
+        )
+
+        statistics = (
+            self.calculate_rule_stats(
+                history
+            )
+        )
+
+        rule_key = analysis[
+            "rule_key"
+        ]
+
+        rule_stats = statistics.get(
+            rule_key,
+            {
+                "samples": 0,
+                "correct": 0,
+                "wrong": 0,
+                "accuracy": 0.0,
+            },
+        )
+
+        return {
+
+            "analysis":
+                analysis,
+
+            "rule_stats":
+                rule_stats,
+
+            "all_rule_stats":
+                statistics,
+
+        }

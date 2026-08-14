@@ -5,7 +5,7 @@
 # =========================================================
 
 TELEGRAM_BOT_TOKEN = (
-    "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+    "8910093120:AAEXKCBhY18J2zZ2rDTKvImFlWiWOuhDBJQ"
 )
 
 

@@ -1,308 +1,310 @@
-# engine/backtest_engine.py
+# =========================================================
+# AI-BOT - BACKTEST ENGINE
+# =========================================================
 
 from collections import Counter
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class BacktestEngine:
 
     def __init__(
         self,
-        min_history: int = 20,
+        min_samples: int = 10,
     ):
-        self.min_history = min_history
-
-    # =====================================================
-    # BASIC RESULT
-    # =====================================================
-
-    @staticmethod
-    def empty_result() -> Dict:
-
-        return {
-            "samples": 0,
-            "correct": 0,
-            "wrong": 0,
-            "accuracy": 0.0,
-        }
-
-    # =====================================================
-    # UPDATE RESULT
-    # =====================================================
-
-    @staticmethod
-    def update_result(
-        result: Dict,
-        prediction: Optional[str],
-        actual: str,
-    ):
-
-        if prediction not in ("B", "S"):
-            return
-
-        result["samples"] += 1
-
-        if prediction == actual:
-            result["correct"] += 1
-        else:
-            result["wrong"] += 1
-
-    # =====================================================
-    # CALCULATE ACCURACY
-    # =====================================================
-
-    @staticmethod
-    def calculate_accuracy(
-        result: Dict,
-    ) -> float:
-
-        samples = result["samples"]
-
-        if samples <= 0:
-            return 0.0
-
-        return round(
-            result["correct"]
-            / samples
-            * 100,
-            2,
+        self.min_samples = max(
+            1,
+            min_samples,
         )
 
     # =====================================================
-    # PATTERN SEARCH
+    # NORMALIZE
     # =====================================================
 
-    @staticmethod
-    def find_pattern(
-        history: List[str],
-        pattern: str,
-    ) -> List[str]:
+    def normalize(
+        self,
+        history: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+
+        result = []
+
+        for item in history:
+
+            if not isinstance(item, dict):
+                continue
+
+            number = item.get("number")
+
+            if number is None:
+                continue
+
+            try:
+                number = int(number)
+            except (ValueError, TypeError):
+                continue
+
+            if not 0 <= number <= 9:
+                continue
+
+            bs = item.get("bs")
+
+            if bs not in ("B", "S"):
+                bs = "B" if number >= 5 else "S"
+
+            result.append({
+                "period": str(
+                    item.get("period", "")
+                ),
+                "number": number,
+                "bs": bs,
+                "time": item.get("time"),
+            })
+
+        return result
+
+    # =====================================================
+    # B/S PREDICTION
+    # =====================================================
+
+    def predict_bs(
+        self,
+        history: List[Dict[str, Any]],
+        lookback: int = 5,
+    ) -> Optional[str]:
+
+        if len(history) < lookback:
+            return None
+
+        recent = history[-lookback:]
+
+        counter = Counter(
+            item["bs"]
+            for item in recent
+        )
+
+        if not counter:
+            return None
+
+        return max(
+            counter,
+            key=counter.get,
+        )
+
+    # =====================================================
+    # NUMBER PREDICTION
+    # =====================================================
+
+    def predict_number(
+        self,
+        history: List[Dict[str, Any]],
+        lookback: int = 20,
+    ) -> Optional[int]:
+
+        if not history:
+            return None
+
+        recent = history[-lookback:]
+
+        counter = Counter(
+            item["number"]
+            for item in recent
+        )
+
+        if not counter:
+            return None
+
+        return max(
+            counter,
+            key=counter.get,
+        )
+
+    # =====================================================
+    # B/S BACKTEST
+    # =====================================================
+
+    def backtest_bs(
+        self,
+        history: List[Dict[str, Any]],
+        lookback: int = 5,
+    ) -> Dict[str, Any]:
+
+        history = self.normalize(history)
+
+        total = 0
+        correct = 0
 
         results = []
 
-        length = len(pattern)
-
-        if length == 0:
-            return results
-
-        for i in range(
-            len(history) - length
-        ):
-
-            current = "".join(
-                history[
-                    i:i + length
-                ]
-            )
-
-            if current != pattern:
-                continue
-
-            next_index = i + length
-
-            if next_index >= len(history):
-                continue
-
-            results.append(
-                history[next_index]
-            )
-
-        return results
-
-    # =====================================================
-    # PATTERN PREDICTION
-    # =====================================================
-
-    def pattern_prediction(
-        self,
-        history: List[str],
-        min_pattern: int = 3,
-        max_pattern: int = 12,
-        min_matches: int = 3,
-    ) -> Optional[Dict]:
-
-        if len(history) < min_pattern:
-            return None
-
-        max_length = min(
-            max_pattern,
-            len(history) - 1,
-        )
-
-        # Longest context first
-        for length in range(
-            max_length,
-            min_pattern - 1,
-            -1,
-        ):
-
-            pattern = "".join(
-                history[-length:]
-            )
-
-            matches = self.find_pattern(
-                history[:-0] if False else history,
-                pattern,
-            )
-
-            if len(matches) < min_matches:
-                continue
-
-            counter = Counter(matches)
-
-            if counter["B"] > counter["S"]:
-                prediction = "B"
-
-            elif counter["S"] > counter["B"]:
-                prediction = "S"
-
-            else:
-                prediction = None
-
-            return {
-                "prediction": prediction,
-                "pattern": pattern,
-                "matches": len(matches),
-                "B": counter["B"],
-                "S": counter["S"],
-            }
-
-        return None
-
-    # =====================================================
-    # WALK-FORWARD PATTERN BACKTEST
-    # =====================================================
-
-    def backtest_pattern(
-        self,
-        sequence: List[str],
-        min_pattern: int = 3,
-        max_pattern: int = 12,
-        min_matches: int = 3,
-    ) -> Dict:
-
-        result = self.empty_result()
-
-        if len(sequence) <= self.min_history:
-            return result
+        if len(history) <= lookback:
+            return self.empty_result("B/S")
 
         for index in range(
-            self.min_history,
-            len(sequence),
+            lookback,
+            len(history),
         ):
 
-            # အဲဒီအချိန်ထိ ရှိတဲ့ data ပဲသုံး
-            past = sequence[:index]
-
-            actual = sequence[index]
-
-            analysis = self.pattern_prediction(
-                past,
-                min_pattern=min_pattern,
-                max_pattern=max_pattern,
-                min_matches=min_matches,
-            )
-
-            if not analysis:
-                continue
-
-            prediction = analysis[
-                "prediction"
+            training = history[
+                :index
             ]
 
-            self.update_result(
-                result,
-                prediction,
-                actual,
+            actual = history[
+                index
+            ]
+
+            prediction = self.predict_bs(
+                training,
+                lookback,
             )
 
-        result["accuracy"] = (
-            self.calculate_accuracy(result)
+            if prediction is None:
+                continue
+
+            is_correct = (
+                prediction
+                == actual["bs"]
+            )
+
+            total += 1
+
+            if is_correct:
+                correct += 1
+
+            results.append({
+
+                "period":
+                    actual["period"],
+
+                "prediction":
+                    prediction,
+
+                "actual":
+                    actual["bs"],
+
+                "correct":
+                    is_correct,
+            })
+
+        accuracy = (
+            correct / total * 100
+            if total
+            else 0.0
         )
 
-        return result
+        return {
+
+            "type": "B/S",
+
+            "samples": total,
+
+            "correct": correct,
+
+            "wrong":
+                total - correct,
+
+            "accuracy":
+                round(
+                    accuracy,
+                    2,
+                ),
+
+            "results":
+                results,
+        }
 
     # =====================================================
-    # FORMULA PREDICTION
+    # NUMBER BACKTEST
     # =====================================================
 
-    @staticmethod
-    def formula_prediction(
-        sequence: List[str],
-        s_formula: Dict[int, str],
-        b_formula: Dict[int, str],
-    ) -> Optional[str]:
-
-        if not sequence:
-            return None
-
-        current = sequence[-1]
-
-        run_length = 0
-
-        for value in reversed(sequence):
-
-            if value != current:
-                break
-
-            run_length += 1
-
-        if current == "S":
-
-            return s_formula.get(
-                run_length
-            )
-
-        if current == "B":
-
-            return b_formula.get(
-                run_length
-            )
-
-        return None
-
-    # =====================================================
-    # WALK-FORWARD FORMULA BACKTEST
-    # =====================================================
-
-    def backtest_formula(
+    def backtest_number(
         self,
-        sequence: List[str],
-        s_formula: Dict[int, str],
-        b_formula: Dict[int, str],
-    ) -> Dict:
+        history: List[Dict[str, Any]],
+        lookback: int = 20,
+    ) -> Dict[str, Any]:
 
-        result = self.empty_result()
+        history = self.normalize(history)
 
-        if len(sequence) <= self.min_history:
-            return result
+        total = 0
+        correct = 0
+
+        results = []
+
+        if len(history) <= lookback:
+            return self.empty_result(
+                "NUMBER"
+            )
 
         for index in range(
-            self.min_history,
-            len(sequence),
+            lookback,
+            len(history),
         ):
 
-            past = sequence[:index]
+            training = history[
+                :index
+            ]
 
-            actual = sequence[index]
+            actual = history[
+                index
+            ]
 
-            prediction = self.formula_prediction(
-                past,
-                s_formula,
-                b_formula,
+            prediction = self.predict_number(
+                training,
+                lookback,
             )
 
-            self.update_result(
-                result,
-                prediction,
-                actual,
+            if prediction is None:
+                continue
+
+            is_correct = (
+                prediction
+                == actual["number"]
             )
 
-        result["accuracy"] = (
-            self.calculate_accuracy(result)
+            total += 1
+
+            if is_correct:
+                correct += 1
+
+            results.append({
+
+                "period":
+                    actual["period"],
+
+                "prediction":
+                    prediction,
+
+                "actual":
+                    actual["number"],
+
+                "correct":
+                    is_correct,
+            })
+
+        accuracy = (
+            correct / total * 100
+            if total
+            else 0.0
         )
 
-        return result
+        return {
+
+            "type": "NUMBER",
+
+            "samples": total,
+
+            "correct": correct,
+
+            "wrong":
+                total - correct,
+
+            "accuracy":
+                round(
+                    accuracy,
+                    2,
+                ),
+
+            "results":
+                results,
+        }
 
     # =====================================================
     # FULL BACKTEST
@@ -310,26 +312,135 @@ class BacktestEngine:
 
     def run(
         self,
-        sequence: List[str],
-        s_formula: Dict[int, str],
-        b_formula: Dict[int, str],
-    ) -> Dict:
+        history: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
 
-        pattern_result = (
-            self.backtest_pattern(sequence)
+        history = self.normalize(history)
+
+        bs_result = self.backtest_bs(
+            history,
+            lookback=5,
         )
 
-        formula_result = (
-            self.backtest_formula(
-                sequence,
-                s_formula,
-                b_formula,
+        number_result = (
+            self.backtest_number(
+                history,
+                lookback=20,
             )
         )
 
+        # -------------------------------------------------
+        # Combined
+        # -------------------------------------------------
+
+        total_samples = (
+            bs_result["samples"]
+            + number_result["samples"]
+        )
+
+        total_correct = (
+            bs_result["correct"]
+            + number_result["correct"]
+        )
+
+        combined_accuracy = (
+            total_correct
+            / total_samples
+            * 100
+            if total_samples
+            else 0.0
+        )
+
         return {
-            "status": "OK",
-            "total_data": len(sequence),
-            "pattern": pattern_result,
-            "formula": formula_result,
+
+            "bs":
+                bs_result,
+
+            "number":
+                number_result,
+
+            "combined": {
+
+                "samples":
+                    total_samples,
+
+                "correct":
+                    total_correct,
+
+                "wrong":
+                    (
+                        total_samples
+                        - total_correct
+                    ),
+
+                "accuracy":
+                    round(
+                        combined_accuracy,
+                        2,
+                    ),
+            },
         }
+
+    # =====================================================
+    # RECENT BACKTEST
+    # =====================================================
+
+    def recent_backtest(
+        self,
+        history: List[Dict[str, Any]],
+        samples: int = 100,
+    ) -> Dict[str, Any]:
+
+        history = self.normalize(history)
+
+        if len(history) > samples:
+            history = history[-samples:]
+
+        return self.run(
+            history
+        )
+
+    # =====================================================
+    # EMPTY RESULT
+    # =====================================================
+
+    def empty_result(
+        self,
+        result_type: str,
+    ) -> Dict[str, Any]:
+
+        return {
+
+            "type":
+                result_type,
+
+            "samples":
+                0,
+
+            "correct":
+                0,
+
+            "wrong":
+                0,
+
+            "accuracy":
+                0.0,
+
+            "results":
+                [],
+        }
+
+
+# =========================================================
+# HELPER
+# =========================================================
+
+def run_backtest(
+    history: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+
+    engine = BacktestEngine()
+
+    return engine.run(
+        history
+    )

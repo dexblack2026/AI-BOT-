@@ -1,13 +1,15 @@
 # =========================================================
 # AI-BOT - GAME API
+# SC 60s GAME
 # =========================================================
 
 import asyncio
 import json
 import logging
+import os
 import time
 
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import aiohttp
 
@@ -18,9 +20,9 @@ from config import (
     PAGE_NUMBER,
     PAGE_SIZE,
     REQUEST_TIMEOUT,
-    MIN_NUMBER,
-    MAX_NUMBER,
-    BIG_MIN_NUMBER,
+    DATA_FILE,
+    MAX_HISTORY,
+    BIG_THRESHOLD,
 )
 
 
@@ -29,14 +31,30 @@ logger = logging.getLogger("GameAPI")
 
 class GameAPI:
 
-    def __init__(self):
+    # =====================================================
+    # INIT
+    # =====================================================
 
-        self.issue_url = ISSUE_API_URL
-        self.history_url = HISTORY_API_URL
+    def __init__(
+        self,
+        issue_url: str = ISSUE_API_URL,
+        history_url: str = HISTORY_API_URL,
+        headers: Optional[dict] = None,
+    ):
 
-        self.headers = HEADERS.copy()
+        self.issue_url = issue_url
 
-        self.session = None
+        self.history_url = history_url
+
+        self.headers = (
+            headers
+            if headers is not None
+            else HEADERS.copy()
+        )
+
+        self.session: Optional[
+            aiohttp.ClientSession
+        ] = None
 
     # =====================================================
     # SESSION
@@ -53,9 +71,11 @@ class GameAPI:
                 total=REQUEST_TIMEOUT
             )
 
-            self.session = aiohttp.ClientSession(
-                headers=self.headers,
-                timeout=timeout,
+            self.session = (
+                aiohttp.ClientSession(
+                    headers=self.headers,
+                    timeout=timeout,
+                )
             )
 
         return self.session
@@ -64,12 +84,9 @@ class GameAPI:
     # BUILD PAYLOAD
     # =====================================================
 
-    def build_payload(
-        self,
-        pagination=False,
-    ):
+    def build_payload(self) -> dict:
 
-        payload = {
+        return {
 
             "typeId": 1,
 
@@ -85,27 +102,14 @@ class GameAPI:
                 "0000000000000000000000002B29B4CD",
         }
 
-        if pagination:
-
-            payload.update({
-
-                "pageSize":
-                    PAGE_SIZE,
-
-                "pageNo":
-                    PAGE_NUMBER,
-            })
-
-        return payload
-
     # =====================================================
-    # POST
+    # POST REQUEST
     # =====================================================
 
     async def post(
         self,
         url: str,
-        payload: Dict[str, Any],
+        payload: dict,
     ):
 
         session = await self.get_session()
@@ -117,30 +121,38 @@ class GameAPI:
                 json=payload,
             ) as response:
 
-                text = await response.text()
-
                 if response.status != 200:
 
                     logger.error(
-                        "HTTP %s: %s",
+                        "API HTTP %s: %s",
                         response.status,
-                        text[:300],
+                        url,
                     )
 
                     return None
 
+                text = await response.text()
+
                 if not text:
+
+                    logger.error(
+                        "Empty API response: %s",
+                        url,
+                    )
 
                     return None
 
                 try:
 
-                    return json.loads(text)
+                    return json.loads(
+                        text
+                    )
 
                 except json.JSONDecodeError:
 
                     logger.error(
-                        "Invalid JSON response"
+                        "Invalid JSON response: %s",
+                        url,
                     )
 
                     return None
@@ -148,13 +160,14 @@ class GameAPI:
         except asyncio.TimeoutError:
 
             logger.error(
-                "API request timeout"
+                "API timeout: %s",
+                url,
             )
 
         except aiohttp.ClientError as error:
 
             logger.error(
-                "API connection error: %s",
+                "Network error: %s",
                 error,
             )
 
@@ -168,16 +181,18 @@ class GameAPI:
         return None
 
     # =====================================================
-    # CURRENT GAME
+    # CURRENT PERIOD
     # =====================================================
 
-    async def get_current_game(
+    async def get_current_period(
         self,
-    ) -> Optional[Dict[str, Any]]:
+    ) -> Optional[str]:
+
+        payload = self.build_payload()
 
         response = await self.post(
             self.issue_url,
-            self.build_payload(),
+            payload,
         )
 
         if not isinstance(
@@ -191,78 +206,63 @@ class GameAPI:
             "data"
         )
 
-        if not isinstance(
+        # ---------------------------------------------
+        # data = dict
+        # ---------------------------------------------
+
+        if isinstance(
             data,
             dict,
         ):
 
-            data = response
+            period = (
+                data.get("issueNumber")
+                or data.get("issue")
+                or data.get("period")
+            )
 
-        # -------------------------------------------------
-        # PERIOD
-        # -------------------------------------------------
+            if period is not None:
+
+                return str(
+                    period
+                ).strip()
+
+        # ---------------------------------------------
+        # data = string / integer
+        # ---------------------------------------------
+
+        if isinstance(
+            data,
+            (str, int),
+        ):
+
+            return str(
+                data
+            ).strip()
+
+        # ---------------------------------------------
+        # fallback
+        # ---------------------------------------------
 
         period = (
-
-            data.get(
+            response.get(
                 "issueNumber"
             )
-
-            or data.get(
+            or response.get(
                 "issue"
             )
-
-            or data.get(
-                "issueNo"
-            )
-
-            or data.get(
+            or response.get(
                 "period"
             )
-
-            or data.get(
-                "periodNumber"
-            )
         )
 
-        # -------------------------------------------------
-        # TIME
-        # -------------------------------------------------
+        if period is not None:
 
-        game_time = (
+            return str(
+                period
+            ).strip()
 
-            data.get(
-                "gameTime"
-            )
-
-            or data.get(
-                "time"
-            )
-
-            or data.get(
-                "drawTime"
-            )
-
-            or data.get(
-                "timestamp"
-            )
-        )
-
-        if period is None:
-
-            return None
-
-        return {
-
-            "period":
-                str(period),
-
-            "time":
-                game_time,
-
-            "raw":
-                data,
-        }
+        return None
 
     # =====================================================
     # HISTORY
@@ -270,13 +270,23 @@ class GameAPI:
 
     async def get_history(
         self,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Dict]:
+
+        payload = self.build_payload()
+
+        payload.update({
+
+            "pageSize":
+                PAGE_SIZE,
+
+            "pageNo":
+                PAGE_NUMBER,
+
+        })
 
         response = await self.post(
             self.history_url,
-            self.build_payload(
-                pagination=True
-            ),
+            payload,
         )
 
         if not isinstance(
@@ -286,247 +296,139 @@ class GameAPI:
 
             return []
 
-        raw_list = self.extract_list(
-            response
+        # ---------------------------------------------
+        # Extract data
+        # ---------------------------------------------
+
+        raw_data = (
+            response.get("data")
+            or response.get("list")
+            or []
         )
+
+        if isinstance(
+            raw_data,
+            dict,
+        ):
+
+            results = (
+                raw_data.get("list")
+                or raw_data.get("rows")
+                or raw_data.get("data")
+                or []
+            )
+
+        elif isinstance(
+            raw_data,
+            list,
+        ):
+
+            results = raw_data
+
+        else:
+
+            results = []
+
+        # ---------------------------------------------
+        # Parse
+        # ---------------------------------------------
 
         history = []
 
-        for item in raw_list:
+        for item in results:
 
-            record = self.normalize_result(
-                item
+            if not isinstance(
+                item,
+                dict,
+            ):
+
+                continue
+
+            # -----------------------------------------
+            # Period
+            # -----------------------------------------
+
+            period = (
+                item.get(
+                    "issueNumber"
+                )
+                or item.get(
+                    "issue"
+                )
+                or item.get(
+                    "period"
+                )
             )
 
-            if record:
+            # -----------------------------------------
+            # Number
+            # -----------------------------------------
 
-                history.append(
-                    record
+            number = (
+                item.get(
+                    "number"
                 )
+                if item.get(
+                    "number"
+                ) is not None
+                else item.get(
+                    "resultNum"
+                )
+            )
+
+            if period is None:
+                continue
+
+            if number is None:
+                continue
+
+            try:
+
+                number = int(
+                    number
+                )
+
+            except (
+                ValueError,
+                TypeError,
+            ):
+
+                continue
+
+            # -----------------------------------------
+            # Validate Number
+            # -----------------------------------------
+
+            if number < 0 or number > 9:
+
+                continue
+
+            # -----------------------------------------
+            # B / S
+            # -----------------------------------------
+
+            bs = (
+                "B"
+                if number >= BIG_THRESHOLD
+                else "S"
+            )
+
+            history.append({
+
+                "period":
+                    str(period).strip(),
+
+                "number":
+                    number,
+
+                "bs":
+                    bs,
+
+            })
 
         return self.clean_history(
             history
         )
-
-    # =====================================================
-    # EXTRACT LIST
-    # =====================================================
-
-    def extract_list(
-        self,
-        response: Dict[str, Any],
-    ) -> List[Any]:
-
-        data = response.get(
-            "data"
-        )
-
-        # data = list
-        if isinstance(
-            data,
-            list,
-        ):
-
-            return data
-
-        # data = object
-        if isinstance(
-            data,
-            dict,
-        ):
-
-            for key in (
-                "list",
-                "rows",
-                "records",
-                "history",
-                "data",
-            ):
-
-                value = data.get(
-                    key
-                )
-
-                if isinstance(
-                    value,
-                    list,
-                ):
-
-                    return value
-
-        # root level
-        for key in (
-            "list",
-            "rows",
-            "records",
-            "history",
-        ):
-
-            value = response.get(
-                key
-            )
-
-            if isinstance(
-                value,
-                list,
-            ):
-
-                return value
-
-        return []
-
-    # =====================================================
-    # NORMALIZE RESULT
-    # =====================================================
-
-    def normalize_result(
-        self,
-        item: Any,
-    ) -> Optional[Dict[str, Any]]:
-
-        if not isinstance(
-            item,
-            dict,
-        ):
-
-            return None
-
-        # -------------------------------------------------
-        # PERIOD
-        # -------------------------------------------------
-
-        period = (
-
-            item.get(
-                "issueNumber"
-            )
-
-            or item.get(
-                "issue"
-            )
-
-            or item.get(
-                "issueNo"
-            )
-
-            or item.get(
-                "period"
-            )
-
-            or item.get(
-                "periodNumber"
-            )
-        )
-
-        # -------------------------------------------------
-        # NUMBER
-        # -------------------------------------------------
-
-        number = (
-
-            item.get(
-                "number"
-            )
-
-            if item.get(
-                "number"
-            ) is not None
-
-            else item.get(
-                "resultNum"
-            )
-        )
-
-        if number is None:
-
-            number = item.get(
-                "num"
-            )
-
-        if number is None:
-
-            number = item.get(
-                "result"
-            )
-
-        # -------------------------------------------------
-        # TIME
-        # -------------------------------------------------
-
-        game_time = (
-
-            item.get(
-                "gameTime"
-            )
-
-            or item.get(
-                "time"
-            )
-
-            or item.get(
-                "drawTime"
-            )
-
-            or item.get(
-                "createdAt"
-            )
-
-            or item.get(
-                "timestamp"
-            )
-        )
-
-        if period is None:
-            return None
-
-        if number is None:
-            return None
-
-        try:
-
-            number = int(
-                number
-            )
-
-        except (
-            ValueError,
-            TypeError,
-        ):
-
-            return None
-
-        if not (
-            MIN_NUMBER
-            <= number
-            <= MAX_NUMBER
-        ):
-
-            return None
-
-        # -------------------------------------------------
-        # BIG / SMALL
-        # -------------------------------------------------
-
-        bs = (
-            "B"
-            if number >= BIG_MIN_NUMBER
-            else "S"
-        )
-
-        return {
-
-            "period":
-                str(period),
-
-            "number":
-                number,
-
-            "bs":
-                bs,
-
-            "time":
-                game_time,
-        }
 
     # =====================================================
     # CLEAN HISTORY
@@ -534,8 +436,8 @@ class GameAPI:
 
     def clean_history(
         self,
-        history: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+        history: List[Dict],
+    ) -> List[Dict]:
 
         unique = {}
 
@@ -553,13 +455,17 @@ class GameAPI:
                 str(period)
             ] = item
 
-        result = list(
+        cleaned = list(
             unique.values()
         )
 
+        # ---------------------------------------------
+        # Sort oldest → newest
+        # ---------------------------------------------
+
         try:
 
-            result.sort(
+            cleaned.sort(
                 key=lambda x: int(
                     x["period"]
                 )
@@ -570,44 +476,232 @@ class GameAPI:
             TypeError,
         ):
 
-            result.sort(
-                key=lambda x: str(
-                    x["period"]
-                )
+            cleaned.sort(
+                key=lambda x: x["period"]
             )
 
-        return result
+        return cleaned
 
     # =====================================================
-    # GET ALL DATA
+    # SAVE HISTORY
+    # =====================================================
+
+    def save_history(
+        self,
+        history: List[Dict],
+    ) -> List[Dict]:
+
+        existing = []
+
+        # ---------------------------------------------
+        # Create directory
+        # ---------------------------------------------
+
+        directory = os.path.dirname(
+            DATA_FILE
+        )
+
+        if directory:
+
+            os.makedirs(
+                directory,
+                exist_ok=True,
+            )
+
+        # ---------------------------------------------
+        # Load existing
+        # ---------------------------------------------
+
+        if os.path.exists(
+            DATA_FILE
+        ):
+
+            try:
+
+                with open(
+                    DATA_FILE,
+                    "r",
+                    encoding="utf-8",
+                ) as file:
+
+                    data = json.load(
+                        file
+                    )
+
+                    if isinstance(
+                        data,
+                        list,
+                    ):
+
+                        existing = data
+
+            except (
+                json.JSONDecodeError,
+                OSError,
+            ) as error:
+
+                logger.warning(
+                    "Could not load history: %s",
+                    error,
+                )
+
+        # ---------------------------------------------
+        # Merge
+        # ---------------------------------------------
+
+        combined = (
+            existing + history
+        )
+
+        cleaned = (
+            self.clean_history(
+                combined
+            )
+        )
+
+        # ---------------------------------------------
+        # Limit history
+        # ---------------------------------------------
+
+        cleaned = cleaned[
+            -MAX_HISTORY:
+        ]
+
+        # ---------------------------------------------
+        # Save
+        # ---------------------------------------------
+
+        try:
+
+            with open(
+                DATA_FILE,
+                "w",
+                encoding="utf-8",
+            ) as file:
+
+                json.dump(
+                    cleaned,
+                    file,
+                    indent=4,
+                    ensure_ascii=False,
+                )
+
+        except OSError as error:
+
+            logger.error(
+                "History save error: %s",
+                error,
+            )
+
+        return cleaned
+
+    # =====================================================
+    # LOAD HISTORY
+    # =====================================================
+
+    def load_history(
+        self,
+    ) -> List[Dict]:
+
+        if not os.path.exists(
+            DATA_FILE
+        ):
+
+            return []
+
+        try:
+
+            with open(
+                DATA_FILE,
+                "r",
+                encoding="utf-8",
+            ) as file:
+
+                data = json.load(
+                    file
+                )
+
+            if not isinstance(
+                data,
+                list,
+            ):
+
+                return []
+
+            return self.clean_history(
+                data
+            )
+
+        except (
+            json.JSONDecodeError,
+            OSError,
+        ) as error:
+
+            logger.error(
+                "History load error: %s",
+                error,
+            )
+
+            return []
+
+    # =====================================================
+    # FETCH ALL
     # =====================================================
 
     async def fetch_all(
         self,
-    ):
+    ) -> Tuple[
+        Optional[str],
+        List[Dict],
+    ]:
 
-        current_task = (
-            self.get_current_game()
+        # ---------------------------------------------
+        # Request both APIs together
+        # ---------------------------------------------
+
+        period_task = (
+            self.get_current_period()
         )
 
         history_task = (
             self.get_history()
         )
 
-        current, history = (
+        period, history = (
             await asyncio.gather(
-                current_task,
+                period_task,
                 history_task,
             )
         )
 
-        return {
-            "current":
-                current,
+        # ---------------------------------------------
+        # If API history available
+        # ---------------------------------------------
 
-            "history":
-                history,
-        }
+        if history:
+
+            history = self.save_history(
+                history
+            )
+
+        # ---------------------------------------------
+        # Fallback local history
+        # ---------------------------------------------
+
+        else:
+
+            history = self.load_history()
+
+        logger.info(
+            "Current Period: %s | History: %d",
+            period,
+            len(history),
+        )
+
+        return (
+            period,
+            history,
+        )
 
     # =====================================================
     # CLOSE
@@ -626,70 +720,6 @@ class GameAPI:
 
             self.session = None
 
-
-# =========================================================
-# TEST
-# =========================================================
-
-async def test_api():
-
-    logging.basicConfig(
-        level=logging.INFO
-    )
-
-    api = GameAPI()
-
-    try:
-
-        data = await api.fetch_all()
-
-        print()
-        print(
-            "=============================="
-        )
-
-        print(
-            "CURRENT:"
-        )
-
-        print(
-            data["current"]
-        )
-
-        print()
-        print(
-            "HISTORY:",
-            len(
-                data["history"]
+            logger.info(
+                "API session closed."
             )
-        )
-
-        if data["history"]:
-
-            print()
-            print(
-                "LATEST:"
-            )
-
-            print(
-                data["history"][-1]
-            )
-
-        print(
-            "=============================="
-        )
-
-    finally:
-
-        await api.close()
-
-
-# =========================================================
-# DIRECT TEST
-# =========================================================
-
-if __name__ == "__main__":
-
-    asyncio.run(
-        test_api()
-    )
